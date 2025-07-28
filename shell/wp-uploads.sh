@@ -26,8 +26,9 @@
 #   Displays error messages for various failure conditions such as incorrect directory,
 #   missing arguments, or SSH connection issues.
 getups() {
-    # Handle --help flag
-    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    # Handle --help flag (check all arguments)
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
         echo "WordPress Uploads Download Tool"
         echo ""
         echo "USAGE:"
@@ -70,7 +71,8 @@ getups() {
         echo "    User username"
         echo ""
         return 0
-    fi
+        fi
+    done
 
     current=${PWD##*/}
 
@@ -153,32 +155,32 @@ getups() {
         printf -v prev_month "%02d" $prev_month
 
         # Build exclude options from configuration
-        local exclude_opts=""
+        local -a exclude_opts=()
         for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
-            exclude_opts="$exclude_opts --exclude $pattern"
+            exclude_opts+=(--exclude "$pattern")
         done
 
         echo "📁 Syncing uploads from $ssh_alias for $current_year/$current_month..."
         rsync -av --progress \
-            $exclude_opts \
+            "${exclude_opts[@]}" \
             "$ssh_alias:~/www/wp-content/uploads/$current_year/$current_month/" \
             "./$current_year/$current_month/"
 
         echo "📁 Syncing uploads from $ssh_alias for $prev_year/$prev_month..."
         rsync -av --progress \
-            $exclude_opts \
+            "${exclude_opts[@]}" \
             "$ssh_alias:~/www/wp-content/uploads/$prev_year/$prev_month/" \
             "./$prev_year/$prev_month/"
     else
         # Build exclude options from configuration
-        local exclude_opts=""
+        local -a exclude_opts=()
         for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
-            exclude_opts="$exclude_opts --exclude $pattern"
+            exclude_opts+=(--exclude "$pattern")
         done
 
         echo "📁 Syncing all uploads from $ssh_alias..."
         rsync -av --progress \
-            $exclude_opts \
+            "${exclude_opts[@]}" \
             "$ssh_alias:~/www/wp-content/uploads/" .
     fi
 
