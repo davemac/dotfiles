@@ -1,6 +1,6 @@
 # Dotfiles
 
-My collection of shell functions and configuration files for WordPress development, organized by functionality for better maintainability and ease of use.
+My collection of shell functions and configuration files for WordPress development.
 
 ## Directory Structure
 
@@ -47,6 +47,12 @@ dotfiles/
     ```bash
     source ~/.zprofile
     ```
+
+5. Get started by viewing all available commands:
+    ```bash
+    listcmds
+    ```
+    This will display a comprehensive list of all functions and aliases organized by category.
 
 ## Function Groups
 
@@ -102,7 +108,7 @@ Version control workflow:
 General system tools:
 - `listcmds`: Display all available commands and functions in a neat table
 - File system helpers
-- Network utilities  
+- Network utilities
 - Homebrew shortcuts
 - Directory navigation
 - Chrome proxy setup
