@@ -26,6 +26,52 @@
 #   Displays error messages for various failure conditions such as incorrect directory,
 #   missing arguments, or SSH connection issues.
 getups() {
+    # Handle --help flag
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        echo "WordPress Uploads Download Tool"
+        echo ""
+        echo "USAGE:"
+        echo "  getups s                            # Download all uploads from staging"
+        echo "  getups l                            # Download all uploads from live"
+        echo "  getups s -latest                    # Download only last 2 months from staging"
+        echo "  getups l -latest                    # Download only last 2 months from live"
+        echo "  getups --help                       # Show this help message"
+        echo ""
+        echo "ARGUMENTS:"
+        echo "  s                   Staging environment"
+        echo "  l                   Live/production environment"
+        echo ""
+        echo "OPTIONS:"
+        echo "  -latest             Download only current and previous month uploads"
+        echo "  --help, -h          Show this help message"
+        echo ""
+        echo "DESCRIPTION:"
+        echo "  Downloads uploads from specified environment (staging or live) using SSH."
+        echo "  Must be executed from within a site's subdirectory under '~/Sites'."
+        echo ""
+        echo "REQUIREMENTS:"
+        echo "  • Must be run from within ~/Sites/[sitename]/ directory"
+        echo "  • SSH alias configured: [sitename]-s or [sitename]-l"
+        echo "  • rsync installed"
+        echo "  • SSH access to remote server"
+        echo ""
+        echo "EXCLUSIONS:"
+        echo "  • *.pdf files (excluded by default)"
+        echo "  • *.docx files (excluded by default)"
+        echo ""
+        echo "EXAMPLES:"
+        echo "  cd ~/Sites/mysite && getups s       # Download all staging uploads"
+        echo "  cd ~/Sites/mysite && getups l -latest # Download recent live uploads"
+        echo ""
+        echo "SSH CONFIG:"
+        echo "  Requires entries in ~/.ssh/config like:"
+        echo "  Host mysite-s"
+        echo "    HostName staging.example.com"
+        echo "    User username"
+        echo ""
+        return 0
+    fi
+
     current=${PWD##*/}
 
     if [ -z "$current" ] || [ ! -d ~/Sites/"$current" ]; then
@@ -45,10 +91,52 @@ getups() {
 
     ssh_alias="$current-$1"
 
+    # Pre-check: Validate SSH configuration exists
     if ! grep -q "^Host $ssh_alias$" ~/.ssh/config; then
-        echo "Error: SSH alias '$ssh_alias' not found in ~/.ssh/config"
+        echo "❌ Error: SSH alias '$ssh_alias' not found in ~/.ssh/config"
+        echo ""
+        echo "Please add an entry like:"
+        echo "Host $ssh_alias"
+        echo "  HostName your-server.com"
+        echo "  User your-username"
+        echo "  IdentityFile ~/.ssh/your-key"
+        echo ""
         return 1
     fi
+
+    # Load configuration for SSH timeout
+    load_dotfiles_config 2>/dev/null || true
+    local ssh_timeout="${SSH_TIMEOUT:-10}"
+    
+    # Pre-check: Test SSH connectivity before starting transfer
+    echo "🔍 Testing SSH connectivity to $ssh_alias..."
+    if ! ssh -q -o ConnectTimeout="$ssh_timeout" "$ssh_alias" exit 2>/dev/null; then
+        echo "❌ Error: Cannot establish SSH connection to '$ssh_alias'"
+        echo ""
+        echo "Please check:"
+        echo "  • SSH server is running and accessible"
+        echo "  • SSH key authentication is working"
+        echo "  • Network connectivity to remote server"
+        echo "  • SSH config entry is correct"
+        echo ""
+        echo "Test with: ssh $ssh_alias"
+        return 1
+    fi
+    echo "✅ SSH connectivity verified"
+
+    # Pre-check: Verify remote uploads directory exists
+    echo "🔍 Verifying remote uploads directory..."
+    if ! ssh -q "$ssh_alias" "test -d ~/www/wp-content/uploads" 2>/dev/null; then
+        echo "❌ Error: Remote uploads directory not found at ~/www/wp-content/uploads"
+        echo ""
+        echo "Please verify:"
+        echo "  • WordPress is installed on remote server"
+        echo "  • Path ~/www/wp-content/uploads exists"
+        echo "  • You have read permissions"
+        echo ""
+        return 1
+    fi
+    echo "✅ Remote uploads directory verified"
 
     if [ "$2" = "-latest" ]; then
         current_year=$(date +%Y)
@@ -64,35 +152,34 @@ getups() {
         printf -v current_month "%02d" $current_month
         printf -v prev_month "%02d" $prev_month
 
-        if ssh -q "$ssh_alias" exit; then
-            echo "Syncing uploads from $ssh_alias for $current_year/$current_month..."
-            rsync -av --progress \
-                --exclude "*.pdf" \
-                --exclude "*.docx" \
-                "$ssh_alias:~/www/wp-content/uploads/$current_year/$current_month/" \
-                "./$current_year/$current_month/"
+        # Build exclude options from configuration
+        local exclude_opts=""
+        for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
+            exclude_opts="$exclude_opts --exclude $pattern"
+        done
 
-            echo "Syncing uploads from $ssh_alias for $prev_year/$prev_month..."
-            rsync -av --progress \
-                --exclude "*.pdf" \
-                --exclude "*.docx" \
-                "$ssh_alias:~/www/wp-content/uploads/$prev_year/$prev_month/" \
-                "./$prev_year/$prev_month/"
-        else
-            echo "Error: Could not connect to '$ssh_alias'. Please check your SSH configuration."
-            return 1
-        fi
+        echo "📁 Syncing uploads from $ssh_alias for $current_year/$current_month..."
+        rsync -av --progress \
+            $exclude_opts \
+            "$ssh_alias:~/www/wp-content/uploads/$current_year/$current_month/" \
+            "./$current_year/$current_month/"
+
+        echo "📁 Syncing uploads from $ssh_alias for $prev_year/$prev_month..."
+        rsync -av --progress \
+            $exclude_opts \
+            "$ssh_alias:~/www/wp-content/uploads/$prev_year/$prev_month/" \
+            "./$prev_year/$prev_month/"
     else
-        if ssh -q "$ssh_alias" exit; then
-            echo "Syncing all uploads from $ssh_alias..."
-            rsync -av --progress \
-                --exclude "*.pdf" \
-                --exclude "*.docx" \
-                "$ssh_alias:~/www/wp-content/uploads/" .
-        else
-            echo "Error: Could not connect to '$ssh_alias'. Please check your SSH configuration."
-            return 1
-        fi
+        # Build exclude options from configuration
+        local exclude_opts=""
+        for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
+            exclude_opts="$exclude_opts --exclude $pattern"
+        done
+
+        echo "📁 Syncing all uploads from $ssh_alias..."
+        rsync -av --progress \
+            $exclude_opts \
+            "$ssh_alias:~/www/wp-content/uploads/" .
     fi
 
     cd ~/Sites/"$current"/wp-content/themes/"$current" || return 1
@@ -165,11 +252,44 @@ pushups() {
     fi
 
     if [ ! -d ~/Sites/"${sitedir}"/wp-content/uploads ]; then
-        echo "Error: Uploads directory not found at ~/Sites/${sitedir}/wp-content/uploads"
+        echo "❌ Error: Uploads directory not found at ~/Sites/${sitedir}/wp-content/uploads"
         return 1
     fi
 
-    echo "Pushing uploads to $sshalias..."
+    # Load configuration for SSH timeout and excludes
+    load_dotfiles_config 2>/dev/null || true
+    local ssh_timeout="${SSH_TIMEOUT:-10}"
+    
+    # Pre-check: Test SSH connectivity before uploading
+    echo "🔍 Testing SSH connectivity to $sshalias..."
+    if ! ssh -q -o ConnectTimeout="$ssh_timeout" "$sshalias" exit 2>/dev/null; then
+        echo "❌ Error: Cannot establish SSH connection to '$sshalias'"
+        echo ""
+        echo "Please check:"
+        echo "  • SSH server is running and accessible"
+        echo "  • SSH key authentication is working"
+        echo "  • Network connectivity to remote server"
+        echo "  • SSH config entry for $sshalias exists"
+        echo ""
+        return 1
+    fi
+    echo "✅ SSH connectivity verified"
+
+    # Pre-check: Verify remote uploads directory exists and is writable
+    echo "🔍 Verifying remote uploads directory..."
+    if ! ssh -q "$sshalias" "test -d ~/www/wp-content/uploads && test -w ~/www/wp-content/uploads" 2>/dev/null; then
+        echo "❌ Error: Remote uploads directory not found or not writable at ~/www/wp-content/uploads"
+        echo ""
+        echo "Please verify:"
+        echo "  • WordPress is installed on remote server"
+        echo "  • Path ~/www/wp-content/uploads exists"
+        echo "  • You have write permissions to the directory"
+        echo ""
+        return 1
+    fi
+    echo "✅ Remote uploads directory verified"
+
+    echo "📤 Pushing uploads to $sshalias..."
     cd ~/Sites/"${sitedir}"/wp-content/uploads || return
     rsync -avzW --progress * "$sshalias:~/www/wp-content/uploads"
 }
