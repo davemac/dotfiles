@@ -25,6 +25,41 @@
 #
 # Output: plugin_memory_test_YYYYMMDD_HHMMSS.txt with full test results
 wp_plugin_diags() {
+    # Handle --help flag
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        echo "WordPress Plugin Fatal Error Diagnostic Tool"
+        echo ""
+        echo "USAGE:"
+        echo "  wp_plugin_diags                 # Run diagnostic on current site"
+        echo "  wp_plugin_diags --help          # Show this help message"
+        echo ""
+        echo "DESCRIPTION:"
+        echo "  Systematically tests individual plugins to isolate fatal error issues."
+        echo "  Auto-detects site URL and active plugins using wp-cli."
+        echo ""
+        echo "REQUIREMENTS:"
+        echo "  • Must be run from WordPress root directory"
+        echo "  • wp-cli must be installed and configured"
+        echo "  • Site must be accessible via HTTP/HTTPS"
+        echo ""
+        echo "WHAT IT DOES:"
+        echo "  1. Auto-detects site URL using wp-cli (wp option get home)"
+        echo "  2. Auto-detects all currently active plugins"
+        echo "  3. Tests each plugin individually by deactivating it"
+        echo "  4. Checks for fatal memory errors in wp-content/debug.log"
+        echo "  5. Saves detailed output to timestamped log file"
+        echo ""
+        echo "OUTPUT:"
+        echo "  • Terminal output with color-coded results"
+        echo "  • Log file: plugin_memory_test_YYYYMMDD_HHMMSS.txt"
+        echo ""
+        echo "SKIP LIST:"
+        echo "  By default skips: wordfence, akismet, updraftplus"
+        echo "  Configure via ~/.dotfiles-config (future feature)"
+        echo ""
+        return 0
+    fi
+
     # Check if we're in a WordPress directory first
     if [[ ! -f "wp-config.php" ]]; then
         echo -e "\033[0;31mError: This script must be run from the WordPress root directory\033[0m"
@@ -48,8 +83,9 @@ wp_plugin_diags() {
     local yellow='\033[1;33m'
     local nc='\033[0m'
 
-    # Plugins to skip (add plugin names here that should never be tested)
-    local skip_plugins="wordfence akismet updraftplus"
+    # Load configuration for plugin skip list
+    load_dotfiles_config 2>/dev/null || true
+    local skip_plugins="${PLUGIN_SKIP_LIST:-wordfence akismet updraftplus}"
 
     # Function to print coloured output
     print_status() {

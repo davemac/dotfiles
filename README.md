@@ -7,6 +7,7 @@ My collection of shell functions and configuration files for WordPress developme
 ```
 dotfiles/
 ├── shell/
+│   ├── config.sh         # Global configuration management
 │   ├── deployment.sh      # Theme deployment (firstdeploy, depto)
 │   ├── git.sh            # Git utilities and branch management
 │   ├── utils.sh          # System utilities and common aliases
@@ -54,7 +55,20 @@ dotfiles/
     ```
     This will display a comprehensive list of all functions and aliases organized by category.
 
+6. (Optional) Configure dotfiles settings:
+    ```bash
+    dotfiles_config --create  # Create default configuration file
+    dotfiles_config --edit    # Edit configuration settings
+    ```
+
 ## Function Groups
+
+### Configuration Management (config.sh)
+Global configuration system for all dotfiles functions:
+- `dotfiles_config --create`: Create default configuration file
+- `dotfiles_config --show`: Display current configuration settings
+- `dotfiles_config --edit`: Edit configuration file with default editor
+- `load_dotfiles_config`: Load configuration (used internally by other functions)
 
 ### WordPress Core Shortcuts (wp-core.sh)
 Essential WP-CLI aliases and shortcuts:
@@ -196,8 +210,10 @@ listcmds  # Display comprehensive list of all functions and aliases
 ```
 ~/
 ├── .shell-functions -> /Users/dave/dotfiles/shell/
+├── .dotfiles-config              # Optional: Global configuration file
 └── dotfiles/
     ├── shell/
+    │   ├── config.sh
     │   ├── deployment.sh
     │   ├── git.sh
     │   ├── utils.sh

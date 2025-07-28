@@ -19,6 +19,51 @@
 #   ~/Sites/sitename/wp-content/themes/sitename/  (Theme directory)
 #
 pullprod() {
+    # Handle --help flag
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        echo "WordPress Production Database Sync Tool"
+        echo ""
+        echo "USAGE:"
+        echo "  pullprod                            # Sync production database to local"
+        echo "  pullprod --help                     # Show this help message"
+        echo ""
+        echo "DESCRIPTION:"
+        echo "  Syncs a WordPress database from production to local environment."
+        echo "  Automatically detects site name from directory structure."
+        echo ""
+        echo "REQUIREMENTS:"
+        echo "  • wp-cli installed and configured"
+        echo "  • @prod alias configured in ~/.wp-cli/config.yml"
+        echo "  • Run from WordPress root OR theme directory"
+        echo "  • SSH access to production server"
+        echo ""
+        echo "OPERATIONS:"
+        echo "  1. Backs up the local database"
+        echo "  2. Downloads the production database"
+        echo "  3. Updates URLs to match local environment"
+        echo "  4. Updates WordPress core, plugins, and themes"
+        echo "  5. Configures plugins for local development"
+        echo ""
+        echo "DIRECTORY STRUCTURES:"
+        echo "  ~/Sites/sitename/                           # WordPress root"
+        echo "  ~/Sites/sitename/wp-content/themes/sitename/ # Theme directory"
+        echo ""
+        echo "SAFETY FEATURES:"
+        echo "  • Creates backup before importing"
+        echo "  • Validates production connection"
+        echo "  • Restores backup on failure"
+        echo "  • User confirmation required"
+        echo ""
+        echo "WHAT CHANGES:"
+        echo "  • Local database replaced with production data"
+        echo "  • URLs updated to https://sitename.localhost"
+        echo "  • Admin password set to 'dmcweb'"
+        echo "  • Development plugins activated"
+        echo "  • Production-only plugins deactivated"
+        echo ""
+        return 0
+    fi
+
     # Define colors for better readability
     local GREEN='\033[0;32m'
     local YELLOW='\033[1;33m'
@@ -89,6 +134,18 @@ pullprod() {
     # URL configuration
     local LOCAL_URL="https://${SITE_NAME}.localhost"
     message "Local URL: $LOCAL_URL"
+
+    # Pre-check: Test SSH connectivity to production
+    message "Testing connectivity to production server..."
+    if ! wp @prod core is-installed --quiet 2>/dev/null; then
+        error "Cannot connect to production server. Please check:"
+        echo "  • SSH connection to production server"
+        echo "  • @prod alias configuration in ~/.wp-cli/config.yml"
+        echo "  • wp-cli installation on production server"
+        echo "  • Network connectivity"
+        return 1
+    fi
+    message "Production server connection verified ✓"
 
     # Get production URL for search-replace operation
     message "Getting production site URL..."
@@ -190,6 +247,18 @@ pullprod() {
 
 # Pull a staging WP database to an existing local site
 pullstage() {
+   # Pre-check: Test SSH connectivity to staging
+   echo "Testing connectivity to staging server..."
+   if ! wp @stage core is-installed --quiet 2>/dev/null; then
+       echo "❌ Cannot connect to staging server. Please check:"
+       echo "  • SSH connection to staging server"
+       echo "  • @stage alias configuration in ~/.wp-cli/config.yml"
+       echo "  • wp-cli installation on staging server"
+       echo "  • Network connectivity"
+       return 1
+   fi
+   echo "✅ Staging server connection verified"
+
    START=$(date +%s)
    current=${PWD##*/}
    cd ~/Sites/$current
@@ -243,9 +312,32 @@ pulltest() {
 
 # Push a local WP database to an existing staging site
 pushstage() {
+   # Pre-check: Test SSH connectivity to staging
+   echo "Testing connectivity to staging server..."
+   if ! wp @stage core is-installed --quiet 2>/dev/null; then
+       echo "❌ Cannot connect to staging server. Please check:"
+       echo "  • SSH connection to staging server"
+       echo "  • @stage alias configuration in ~/.wp-cli/config.yml"
+       echo "  • wp-cli installation on staging server"
+       echo "  • Network connectivity"
+       return 1
+   fi
+   echo "✅ Staging server connection verified"
+
    START=$(date +%s)
    current=${PWD##*/}
    cd ~/Sites/$current || return
+
+   # Additional pre-check: Test direct SSH connection for file transfer
+   echo "Testing SSH file transfer connectivity..."
+   if ! ssh -q "$current-s" exit 2>/dev/null; then
+       echo "❌ Cannot establish SSH connection to $current-s. Please check:"
+       echo "  • SSH config entry for $current-s"
+       echo "  • SSH key authentication"
+       echo "  • Network connectivity"
+       return 1
+   fi
+   echo "✅ SSH file transfer connectivity verified"
 
    wp db export $current.sql
    rsync $current.sql $current-s:~/
@@ -291,20 +383,53 @@ dmcweb() {
 # Returns:
 #   0 if all hosts were updated successfully, otherwise 1
  update-wc-db() {
-    # Define array of host entries matching SSH config aliases
-    local hosts=("aquacorp-l" "aussie-l" "registrars-l" "cem-l" "colac-l" "dpm-l" "hisense-l" "pelican-l" "pricing-l" "rippercorp-l" "advocate-l" "toshiba-l")
+    echo "🔍 Pre-flight connectivity checks..."
+    
+    # Load configuration for WooCommerce hosts
+    load_dotfiles_config 2>/dev/null || true
+    local hosts_string="${WC_HOSTS:-aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l hisense-l pelican-l pricing-l rippercorp-l advocate-l toshiba-l}"
+    local hosts=($hosts_string)
     local exit_status=0
+    local unreachable_hosts=()
+    local reachable_hosts=()
 
-    # Loop through each host to run the WooCommerce update command
+    # Pre-check all hosts before starting any operations
+    echo "Testing connectivity to all hosts..."
     for host in "${hosts[@]}"; do
-        echo "Connecting to $host..."
-
-        # First verify SSH connection
-        if ! ssh -q "$host" exit; then
-            echo "Error: Could not connect to '$host'. Skipping..."
+        echo -n "  Checking $host... "
+        if ssh -q -o ConnectTimeout=5 "$host" exit 2>/dev/null; then
+            echo "✅ Connected"
+            reachable_hosts+=("$host")
+        else
+            echo "❌ Failed"
+            unreachable_hosts+=("$host")
             exit_status=1
-            continue
         fi
+    done
+
+    # Report unreachable hosts
+    if [ ${#unreachable_hosts[@]} -gt 0 ]; then
+        echo ""
+        echo "⚠️  Warning: ${#unreachable_hosts[@]} host(s) unreachable:"
+        for host in "${unreachable_hosts[@]}"; do
+            echo "  • $host"
+        done
+        echo ""
+        echo "Proceeding with ${#reachable_hosts[@]} reachable hosts..."
+        read -p "Continue? (y/N): " confirm
+        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+            echo "Operation cancelled"
+            return 1
+        fi
+    else
+        echo "✅ All hosts reachable, proceeding with updates..."
+    fi
+
+    echo ""
+    
+    # Loop through each reachable host to run the WooCommerce update command
+    for host in "${reachable_hosts[@]}"; do
+        echo "Connecting to $host..."
 
         # Use SSH to connect to the host and execute the WP-CLI WooCommerce update commands
         echo "Running WooCommerce update on $host..."
@@ -342,6 +467,46 @@ dmcweb() {
 #   • Performance reporting and metrics
 #
 wp_db_optimise() {
+   # Handle --help flag first
+   if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+       echo "WordPress Database Optimization Tool"
+       echo ""
+       echo "USAGE:"
+       echo "  wp_db_optimise [site-name] [options]"
+       echo "  wpopt [site-name] [options]          # Alias"
+       echo ""
+       echo "ARGUMENTS:"
+       echo "  site-name       Site directory name (optional if run from WordPress root)"
+       echo ""
+       echo "OPTIONS:"
+       echo "  --skip-plugins  Skip plugin deactivation/activation"
+       echo "  --help, -h      Show this help message"
+       echo ""
+       echo "DESCRIPTION:"
+       echo "  Performs comprehensive database cleanup, removes plugin bloat,"
+       echo "  configures WordPress settings for development, and manages plugins."
+       echo ""
+       echo "OPERATIONS:"
+       echo "  • Database cleanup (transients, orphaned data, plugin-specific tables)"
+       echo "  • WordPress configuration optimization for development"
+       echo "  • Plugin management (deactivates heavy plugins, activates dev tools)"
+       echo "  • Performance reporting and metrics"
+       echo ""
+       echo "EXAMPLES:"
+       echo "  wp_db_optimise                      # Auto-detect site from current directory"
+       echo "  wp_db_optimise mysite               # Optimize specific site"
+       echo "  wp_db_optimise mysite --skip-plugins # Optimize without plugin changes"
+       echo "  wpopt mysite                        # Using alias"
+       echo ""
+       echo "OUTPUT:"
+       echo "  • Before/after database size comparison"
+       echo "  • Postmeta entries cleanup report"
+       echo "  • Plugin activation status"
+       echo "  • Database health metrics"
+       echo ""
+       return 0
+   fi
+
    local site_name="$1"
    local skip_plugins=false
 
@@ -350,6 +515,10 @@ wp_db_optimise() {
        case $1 in
            --skip-plugins)
                skip_plugins=true
+               shift
+               ;;
+           --help|-h)
+               # Already handled above, but include for completeness
                shift
                ;;
            *)
@@ -462,9 +631,10 @@ wp_db_optimise() {
    wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_dmc_show_full_article';" 2>/dev/null
 
    echo "⚙️  Updating WordPress configuration..."
+   load_dotfiles_config 2>/dev/null || true
    wp config set DISABLE_WP_CRON true --type=constant 2>/dev/null
-   wp config set WP_MEMORY_LIMIT '512M' --type=constant 2>/dev/null
-   wp config set WP_MAX_MEMORY_LIMIT '1024M' --type=constant 2>/dev/null
+   wp config set WP_MEMORY_LIMIT "${DEFAULT_MEMORY_LIMIT:-512M}" --type=constant 2>/dev/null
+   wp config set WP_MAX_MEMORY_LIMIT "${DEFAULT_MAX_MEMORY_LIMIT:-1024M}" --type=constant 2>/dev/null
    wp config set AUTOSAVE_INTERVAL 300 --type=constant 2>/dev/null
    wp config set WP_POST_REVISIONS 3 --type=constant 2>/dev/null
    wp config set WP_DEBUG true --type=constant 2>/dev/null
