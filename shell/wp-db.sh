@@ -310,8 +310,163 @@ pulltest() {
    echo -e "\n$test_url database now in use on https://$current.localhost site.\nIt took $DIFF seconds, enjoy!\n"
 }
 
+# Push Staging Dry-run Preview Function
+pushstage_dry_run_preview() {
+    local current=${PWD##*/}
+    
+    echo "📊 Analyzing local and staging environments..."
+    echo ""
+    
+    # Basic environment info
+    echo "🏠 LOCAL ENVIRONMENT:"
+    if [[ -f "wp-config.php" ]]; then
+        local local_url=$(wp option get siteurl 2>/dev/null || echo "https://$current.localhost")
+        local local_db_size=$(wp db size 2>/dev/null | grep -o '[0-9.]* MB' || echo "unknown size")
+        local local_posts=$(wp post list --format=count 2>/dev/null || echo "unknown")
+        local local_plugins=$(wp plugin list --status=active --format=count 2>/dev/null || echo "unknown")
+        
+        echo "  • Site URL: $local_url"
+        echo "  • Database size: $local_db_size"
+        echo "  • Posts: $local_posts"
+        echo "  • Active plugins: $local_plugins"
+    else
+        echo "  • Not in WordPress root directory"
+        echo "  • Site: $current (detected from directory name)"
+        echo "  • Expected path: ~/Sites/$current/"
+    fi
+    
+    echo ""
+    echo "🎭 STAGING ENVIRONMENT:"
+    local staging_url="https://$current.dmctest.com.au"
+    echo "  • Target URL: $staging_url"
+    echo "  • SSH alias: $current-s"
+    
+    # Check if we can connect to staging (non-destructive check)
+    if wp @stage core is-installed --quiet 2>/dev/null; then
+        local staging_db_size=$(wp @stage db size 2>/dev/null | grep -o '[0-9.]* MB' || echo "unknown")
+        local staging_posts=$(wp @stage post list --format=count 2>/dev/null || echo "unknown")
+        echo "  • Current database size: $staging_db_size"
+        echo "  • Current posts: $staging_posts"
+        echo "  • Connection: ✅ Verified"
+    else
+        echo "  • Connection: ❌ Cannot connect (would fail in real execution)"
+    fi
+    
+    echo ""
+    echo "🔄 OPERATIONS THAT WOULD BE PERFORMED:"
+    echo ""
+    echo "1. 📤 DATABASE EXPORT (Local):"
+    echo "   • Export local database → $current.sql"
+    echo "   • Transfer file to staging server via rsync"
+    echo ""
+    
+    echo "2. 🔒 STAGING BACKUP:"
+    echo "   • Create backup: backup.sql (on staging server)"
+    echo "   • Preserve current staging data for safety"
+    echo ""
+    
+    echo "3. 🔄 DATABASE REPLACEMENT:"
+    echo "   • Reset staging database (⚠️ destructive)"
+    echo "   • Import local database to staging"
+    echo ""
+    
+    echo "4. 🔗 URL REPLACEMENT:"
+    local local_url_for_replace=$(wp option get siteurl 2>/dev/null || echo "https://$current.localhost")
+    echo "   • Search-replace URLs in database:"
+    echo "     $local_url_for_replace → $staging_url"
+    echo ""
+    
+    echo "5. 🔌 PLUGIN CONFIGURATION:"
+    echo "   • Plugins that would be DEACTIVATED:"
+    echo "     - query-monitor (development tool)"
+    echo "     - acf-theme-code-pro (development tool)"  
+    echo "     - wordpress-seo (optional deactivation)"
+    echo ""
+    
+    echo "6. ⚙️  STAGING SETTINGS:"
+    echo "   • blog_public: 1 → 0 (hide from search engines)"
+    echo ""
+    
+    echo "📈 ESTIMATED IMPACT:"
+    if wp core is-installed --quiet 2>/dev/null; then
+        local export_size=$(wp db size 2>/dev/null | grep -o '[0-9.]*' | head -1 || echo "unknown")
+        if [[ "$export_size" != "unknown" ]]; then
+            echo "  • Database export size: ~$export_size MB"
+            echo "  • Transfer time: ~$((${export_size%.*} / 5)) seconds (depends on connection)"
+        fi
+        echo "  • Estimated total time: 2-4 minutes"
+    else
+        echo "  • Run from WordPress root for detailed estimates"
+    fi
+    
+    echo ""
+    echo "⚠️  IMPORTANT WARNINGS:"
+    echo "  • This operation OVERWRITES the staging database completely"
+    echo "  • Current staging content will be REPLACED with local content"
+    echo "  • A backup is created, but staging data will be lost"
+    echo "  • URL replacement affects ALL content (posts, options, metadata)"
+    echo ""
+    
+    echo "💡 To execute this push, run:"
+    echo "   pushstage"
+    echo ""
+    echo "🔍 To check staging before pushing:"
+    echo "   wp @stage option get siteurl"
+    echo "   wp @stage post list --format=count"
+}
+
 # Push a local WP database to an existing staging site
 pushstage() {
+   # Handle --help flag
+   if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+       echo "WordPress Database Push to Staging Tool"
+       echo ""
+       echo "USAGE:"
+       echo "  pushstage                    # Push local database to staging"
+       echo "  pushstage --dry-run          # Preview what would be pushed"
+       echo "  pushstage --help             # Show this help message"
+       echo ""
+       echo "DESCRIPTION:"
+       echo "  Pushes local WordPress database to staging environment."
+       echo "  Automatically handles URL replacement and plugin configuration."
+       echo ""
+       echo "OPTIONS:"
+       echo "  --dry-run       Preview changes without executing them"
+       echo "  --help, -h      Show this help message"
+       echo ""
+       echo "OPERATIONS:"
+       echo "  1. Export local database"
+       echo "  2. Transfer database file to staging server"
+       echo "  3. Backup current staging database"
+       echo "  4. Import local database to staging"
+       echo "  5. Replace URLs: localhost → staging URLs"
+       echo "  6. Configure plugins for staging environment"
+       echo ""
+       echo "REQUIREMENTS:"
+       echo "  • @stage alias configured in ~/.wp-cli/config.yml"
+       echo "  • SSH access to staging server"
+       echo "  • Must be run from site directory under ~/Sites/"
+       echo ""
+       return 0
+   fi
+
+   # Handle --dry-run flag
+   local dry_run=false
+   if [[ "$1" == "--dry-run" ]]; then
+       dry_run=true
+   fi
+
+   if [[ "$dry_run" == true ]]; then
+       echo "🔍 DRY RUN MODE - No changes will be made"
+       echo "============================================="
+       echo "Previewing database push to staging..."
+       echo ""
+       
+       # Generate dry-run preview
+       pushstage_dry_run_preview
+       return 0
+   fi
+
    # Pre-check: Test SSH connectivity to staging
    echo "Testing connectivity to staging server..."
    if ! wp @stage core is-installed --quiet 2>/dev/null; then
@@ -449,6 +604,133 @@ dmcweb() {
     return $exit_status
 }
 
+# WordPress Database Optimization Dry-run Preview Function
+wp_db_optimise_dry_run_preview() {
+    local skip_plugins="$1"
+    
+    echo "📊 Analyzing database for cleanup opportunities..."
+    echo ""
+    
+    # Database cleanup preview
+    echo "🧹 DATABASE CLEANUP PREVIEW:"
+    
+    # Expired transients
+    local expired_transients=$(wp db query "SELECT COUNT(*) FROM wp_options WHERE option_name LIKE '_transient_timeout_%' AND option_value < UNIX_TIMESTAMP();" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  • Expired transients: $expired_transients entries would be deleted"
+    
+    # Orphaned postmeta
+    local orphaned_postmeta=$(wp db query "SELECT COUNT(*) FROM wp_postmeta pm LEFT JOIN wp_posts wp ON wp.ID = pm.post_id WHERE wp.ID IS NULL;" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  • Orphaned postmeta: $orphaned_postmeta entries would be removed"
+    
+    # Auto-draft posts
+    local auto_drafts=$(wp db query "SELECT COUNT(*) FROM wp_posts WHERE post_status = 'auto-draft' AND post_date < DATE_SUB(NOW(), INTERVAL 7 DAY);" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  • Old auto-draft posts: $auto_drafts posts would be deleted"
+    
+    # Edit locks
+    local edit_locks=$(wp db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key = '_edit_lock';" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  • Edit locks: $edit_locks entries would be cleaned"
+    
+    # Action Scheduler
+    local failed_actions=$(wp db query "SELECT COUNT(*) FROM wp_actionscheduler_actions WHERE status = 'failed';" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  • Failed Action Scheduler jobs: $failed_actions entries would be deleted"
+    
+    # Plugin-specific cleanups
+    echo ""
+    echo "🧽 PLUGIN-SPECIFIC CLEANUP PREVIEW:"
+    
+    # SEOPress
+    local seopress_meta=$(wp db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key LIKE '_seopress_%';" --skip-column-names --silent 2>/dev/null || echo "0")
+    if [[ "$seopress_meta" -gt 0 ]]; then
+        echo "  • SEOPress metadata: $seopress_meta entries would be cleaned"
+    fi
+    
+    # Jetpack
+    local jetpack_cache=$(wp db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key = '_jetpack_related_posts_cache';" --skip-column-names --silent 2>/dev/null || echo "0")
+    if [[ "$jetpack_cache" -gt 0 ]]; then
+        echo "  • Jetpack cache entries: $jetpack_cache entries would be cleaned"
+    fi
+    
+    # Check for large plugin tables
+    local gravitysmtp_count=$(wp db query "SELECT COUNT(*) FROM wp_gravitysmtp_events;" --skip-column-names --silent 2>/dev/null || echo "0")
+    if [[ "$gravitysmtp_count" -gt 0 ]]; then
+        echo "  • GravitySmtp events: $gravitysmtp_count entries would be truncated"
+    fi
+    
+    local ewww_count=$(wp db query "SELECT COUNT(*) FROM wp_ewwwio_images;" --skip-column-names --silent 2>/dev/null || echo "0")
+    if [[ "$ewww_count" -gt 0 ]]; then
+        echo "  • EWWW image entries: $ewww_count entries would be truncated"
+    fi
+    
+    echo ""
+    echo "⚙️  WORDPRESS CONFIGURATION CHANGES:"
+    load_dotfiles_config 2>/dev/null || true
+    
+    # Show current vs new config values
+    local current_memory=$(wp config get WP_MEMORY_LIMIT 2>/dev/null || echo "not set")
+    local new_memory="${DEFAULT_MEMORY_LIMIT:-512M}"
+    echo "  • WP_MEMORY_LIMIT: $current_memory → $new_memory"
+    
+    local current_max_memory=$(wp config get WP_MAX_MEMORY_LIMIT 2>/dev/null || echo "not set")
+    local new_max_memory="${DEFAULT_MAX_MEMORY_LIMIT:-1024M}"
+    echo "  • WP_MAX_MEMORY_LIMIT: $current_max_memory → $new_max_memory"
+    
+    local current_cron=$(wp config get DISABLE_WP_CRON 2>/dev/null || echo "false")
+    echo "  • DISABLE_WP_CRON: $current_cron → true"
+    
+    local current_debug=$(wp config get WP_DEBUG 2>/dev/null || echo "false")
+    echo "  • WP_DEBUG: $current_debug → true"
+    
+    local current_revisions=$(wp config get WP_POST_REVISIONS 2>/dev/null || echo "unlimited")
+    echo "  • WP_POST_REVISIONS: $current_revisions → 3"
+    
+    # Plugin management preview
+    if [[ "$skip_plugins" != true ]]; then
+        echo ""
+        echo "🔌 PLUGIN MANAGEMENT PREVIEW:"
+        
+        # Plugins that would be deactivated
+        local heavy_plugins="jetpack google-listings-and-ads woocommerce-services official-mailerlite-sign-up-forms woo-mailerlite gravitysmtp wp-seopress wp-seopress-pro akismet instagram-feed feeds-for-youtube acf-theme-code-pro"
+        local active_heavy=""
+        for plugin in $heavy_plugins; do
+            if wp plugin is-active "$plugin" 2>/dev/null; then
+                active_heavy="$active_heavy $plugin"
+            fi
+        done
+        
+        if [[ -n "$active_heavy" ]]; then
+            echo "  • Plugins that would be deactivated:$active_heavy"
+        else
+            echo "  • No heavy plugins currently active to deactivate"
+        fi
+        
+        # Plugins that would be activated
+        if ! wp plugin is-active query-monitor 2>/dev/null; then
+            echo "  • Plugins that would be activated: query-monitor"
+        else
+            echo "  • query-monitor already active"
+        fi
+    else
+        echo ""
+        echo "🔌 PLUGIN MANAGEMENT: Skipped (--skip-plugins flag)"
+    fi
+    
+    echo ""
+    echo "📈 ESTIMATED IMPACT:"
+    local current_db_size=$(wp db size --format=csv --fields=size 2>/dev/null | tail -1 | grep -o '[0-9]*' || echo "unknown")
+    if [[ "$current_db_size" != "unknown" ]]; then
+        local estimated_savings=$((orphaned_postmeta * 100 + auto_drafts * 50 + expired_transients * 20))
+        echo "  • Current database size: $(numfmt --to=iec $current_db_size 2>/dev/null || echo $current_db_size) bytes"
+        echo "  • Estimated space savings: ~$(numfmt --to=iec $estimated_savings 2>/dev/null || echo $estimated_savings) bytes"
+    fi
+    echo "  • Estimated execution time: 2-4 minutes"
+    echo ""
+    echo "💡 To execute these changes, run:"
+    echo "   wp_db_optimise $site_name"
+    if [[ "$skip_plugins" == true ]]; then
+        echo "   wp_db_optimise $site_name --skip-plugins"
+    fi
+}
+
 # Optimise WordPress localhost database and configuration for development
 #
 # Performs comprehensive database cleanup, removes plugin bloat, configures
@@ -482,6 +764,7 @@ wp_db_optimise() {
        echo ""
        echo "OPTIONS:"
        echo "  --skip-plugins  Skip plugin deactivation/activation"
+       echo "  --dry-run       Preview changes without executing them"
        echo "  --help, -h      Show this help message"
        echo ""
        echo "DESCRIPTION:"
@@ -511,12 +794,17 @@ wp_db_optimise() {
 
    local site_name="$1"
    local skip_plugins=false
+   local dry_run=false
 
    # Parse options
    while [[ $# -gt 0 ]]; do
        case $1 in
            --skip-plugins)
                skip_plugins=true
+               shift
+               ;;
+           --dry-run)
+               dry_run=true
                shift
                ;;
            --help|-h)
@@ -553,6 +841,23 @@ wp_db_optimise() {
            echo "❌ Site directory not found: ~/Sites/$site_name"
            return 1
        fi
+   fi
+
+   if [[ "$dry_run" == true ]]; then
+       echo "🔍 DRY RUN MODE - No changes will be made"
+       echo "=================================================="
+       echo "Previewing optimization for: $site_name"
+       echo ""
+       
+       # Check if WP-CLI is available
+       if ! command -v wp &> /dev/null; then
+           echo "❌ WP-CLI not found. Please install WP-CLI first."
+           return 1
+       fi
+       
+       # Generate dry-run preview
+       wp_db_optimise_dry_run_preview "$skip_plugins"
+       return 0
    fi
 
    echo "🚀 Starting WordPress localhost optimization for: $site_name"
@@ -732,6 +1037,43 @@ alias wpopt='wp_db_optimise'
 # Usage: wp_db_table_delete
 
 wp_db_table_delete() {
+    # Handle --help flag
+    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        echo "WordPress Database Table Cleanup Tool"
+        echo ""
+        echo "USAGE:"
+        echo "  wp_db_table_delete                  # Interactive table cleanup"
+        echo "  wp_db_table_delete --dry-run        # Preview tables without deleting"
+        echo "  wp_db_table_delete --help           # Show this help message"
+        echo ""
+        echo "DESCRIPTION:"
+        echo "  Interactive tool for cleaning up WordPress database tables."
+        echo "  Shows table sizes, safety levels, and allows selective deletion."
+        echo ""
+        echo "OPTIONS:"
+        echo "  --dry-run       Preview tables and estimated cleanup without executing"
+        echo "  --help, -h      Show this help message"
+        echo ""
+        echo "SAFETY LEVELS:"
+        echo "  🟢 SAFE        Usually safe to delete (logs, cache, temporary data)"
+        echo "  🟡 CAUTION     Review before deleting (plugin data, analytics)"
+        echo "  🔴 DANGER      WordPress core tables - DO NOT DELETE"
+        echo ""
+        echo "FEATURES:"
+        echo "  • Automatic backup creation before deletion"
+        echo "  • Table size and row count analysis"
+        echo "  • Safety classification system"
+        echo "  • Detailed debug logging"
+        echo ""
+        return 0
+    fi
+
+    # Handle --dry-run flag
+    local dry_run=false
+    if [[ "$1" == "--dry-run" ]]; then
+        dry_run=true
+    fi
+
     # Colors (check if terminal supports colors)
     local RED=''
     local GREEN=''
@@ -761,18 +1103,24 @@ wp_db_table_delete() {
     local -A table_data
     local -a table_numbers
 
-    # Debug logging function
+    # Debug logging function (skip in dry-run mode)
     debug_log() {
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$debug_log"
+        if [[ "$dry_run" != true ]]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$debug_log"
+        fi
     }
 
-    # Initialize debug log
-    echo "=== WordPress DB Cleanup Debug Log ===" > "$debug_log"
-    debug_log "Starting wp_db_table_delete function"
-    debug_log "Working directory: $(pwd)"
-
-    echo "${BOLD}WordPress Database Table Cleanup${RESET}"
-    echo "Debug log: ${BLUE}$debug_log${RESET}"
+    # Initialize debug log (skip in dry-run mode)
+    if [[ "$dry_run" == true ]]; then
+        echo "${BOLD}🔍 WordPress Database Table Cleanup - DRY RUN MODE${RESET}"
+        echo "Preview mode: No changes will be made to your database"
+    else
+        echo "=== WordPress DB Cleanup Debug Log ===" > "$debug_log"
+        debug_log "Starting wp_db_table_delete function"
+        debug_log "Working directory: $(pwd)"
+        echo "${BOLD}WordPress Database Table Cleanup${RESET}"
+        echo "Debug log: ${BLUE}$debug_log${RESET}"
+    fi
 
     # Check wp-cli
     debug_log "Checking wp-cli availability"
@@ -809,22 +1157,28 @@ wp_db_table_delete() {
     echo "Database: $db_name"
     echo "Prefix: $wp_prefix"
 
-    # Create backup
-    echo "\n${BOLD}STEP 1: CREATING BACKUP${RESET}"
-    echo "$(printf '=%.0s' {1..60})"
+    # Create backup (skip in dry-run mode)
+    if [[ "$dry_run" != true ]]; then
+        echo "\n${BOLD}STEP 1: CREATING BACKUP${RESET}"
+        echo "$(printf '=%.0s' {1..60})"
 
-    local backup_file="$(pwd)/backup-before-cleanup-$(date +%Y-%m-%d-%H-%M-%S).sql"
-    debug_log "Creating backup: $backup_file"
+        local backup_file="$(pwd)/backup-before-cleanup-$(date +%Y-%m-%d-%H-%M-%S).sql"
+        debug_log "Creating backup: $backup_file"
 
-    echo "Creating backup: $backup_file"
-    if wp db export "$backup_file" --quiet 2>>"$debug_log"; then
-        local backup_size=$(du -h "$backup_file" | cut -f1)
-        echo "${GREEN}✅ Backup created: $backup_file ($backup_size)${RESET}"
-        debug_log "Backup successful: $backup_file ($backup_size)"
+        echo "Creating backup: $backup_file"
+        if wp db export "$backup_file" --quiet 2>>"$debug_log"; then
+            local backup_size=$(du -h "$backup_file" | cut -f1)
+            echo "${GREEN}✅ Backup created: $backup_file ($backup_size)${RESET}"
+            debug_log "Backup successful: $backup_file ($backup_size)"
+        else
+            echo "${RED}❌ Backup failed${RESET}"
+            debug_log "ERROR: Backup failed"
+            return 1
+        fi
     else
-        echo "${RED}❌ Backup failed${RESET}"
-        debug_log "ERROR: Backup failed"
-        return 1
+        echo "\n${BOLD}📋 ANALYZING DATABASE TABLES${RESET}"
+        echo "$(printf '=%.0s' {1..60})"
+        echo "In dry-run mode - no backup needed"
     fi
 
     # Get table information
@@ -962,36 +1316,76 @@ wp_db_table_delete() {
         return 0
     fi
 
-    # Confirm deletion
-    echo "\n${BOLD}CONFIRM DELETION${RESET}"
-    echo "$(printf '=%.0s' {1..60})"
-    echo "Tables to delete:"
+    # Handle dry-run vs real deletion
+    if [[ "$dry_run" == true ]]; then
+        # Dry-run mode: just show what would be deleted
+        echo "\n${BOLD}🔍 DRY RUN PREVIEW - TABLES THAT WOULD BE DELETED${RESET}"
+        echo "$(printf '=%.0s' {1..60})"
+        echo "Tables selected for deletion:"
 
-    local total_size=0
-    for num in "${selected_nums[@]}"; do
-        if [[ -n "${table_data[$num]}" ]]; then
-            IFS='|' read -r name size_mb rows engine safety <<< "${table_data[$num]}"
-            local dot="$YELLOW_DOT"
-            [[ "$safety" == "SAFE" ]] && dot="$GREEN_DOT"
-            [[ "$safety" == "DANGER" ]] && dot="$RED_DOT"
+        local total_size=0
+        local safe_count=0
+        local caution_count=0
+        local danger_count=0
+        
+        for num in "${selected_nums[@]}"; do
+            if [[ -n "${table_data[$num]}" ]]; then
+                IFS='|' read -r name size_mb rows engine safety <<< "${table_data[$num]}"
+                local dot="$YELLOW_DOT"
+                [[ "$safety" == "SAFE" ]] && dot="$GREEN_DOT" && ((safe_count++))
+                [[ "$safety" == "CAUTION" ]] && dot="$YELLOW_DOT" && ((caution_count++))
+                [[ "$safety" == "DANGER" ]] && dot="$RED_DOT" && ((danger_count++))
 
-            echo "  $dot $name ($size_mb MB)"
-            total_size=$(echo "$total_size + $size_mb" | bc -l 2>/dev/null || echo "$total_size")
-            debug_log "Will delete: $name ($size_mb MB)"
-        fi
-    done
+                echo "  $dot $name ($size_mb MB, $(printf "%'d" $rows) rows)"
+                total_size=$(echo "$total_size + $size_mb" | bc -l 2>/dev/null || echo "$total_size")
+            fi
+        done
 
-    echo "\nTotal space to free: $(printf "%.2f" $total_size) MB"
-    echo "\n${RED}⚠️  THIS CANNOT BE UNDONE! ⚠️${RESET}"
-    echo -n "Type 'DELETE' to confirm: "
-
-    read confirmation
-    debug_log "Confirmation: $confirmation"
-
-    if [[ "$confirmation" != "DELETE" ]]; then
-        echo "Cancelled"
-        debug_log "User cancelled deletion"
+        echo ""
+        echo "📊 DELETION SUMMARY:"
+        echo "  • Tables selected: ${#selected_nums[@]}"
+        echo "  • Safe tables: $safe_count"
+        echo "  • Caution tables: $caution_count"
+        [[ $danger_count -gt 0 ]] && echo "  • ${RED_DOT} DANGER tables: $danger_count${RESET}"  
+        echo "  • Total space to free: $(printf "%.2f" $total_size) MB"
+        echo ""
+        echo "💡 To execute this deletion, run:"
+        echo "   wp_db_table_delete"
+        echo ""
+        echo "⚠️  Remember: A backup would be created before deletion"
         return 0
+    else
+        # Real deletion mode: confirm and delete
+        echo "\n${BOLD}CONFIRM DELETION${RESET}"
+        echo "$(printf '=%.0s' {1..60})"
+        echo "Tables to delete:"
+
+        local total_size=0
+        for num in "${selected_nums[@]}"; do
+            if [[ -n "${table_data[$num]}" ]]; then
+                IFS='|' read -r name size_mb rows engine safety <<< "${table_data[$num]}"
+                local dot="$YELLOW_DOT"
+                [[ "$safety" == "SAFE" ]] && dot="$GREEN_DOT"
+                [[ "$safety" == "DANGER" ]] && dot="$RED_DOT"
+
+                echo "  $dot $name ($size_mb MB)"
+                total_size=$(echo "$total_size + $size_mb" | bc -l 2>/dev/null || echo "$total_size")
+                debug_log "Will delete: $name ($size_mb MB)"
+            fi
+        done
+
+        echo "\nTotal space to free: $(printf "%.2f" $total_size) MB"
+        echo "\n${RED}⚠️  THIS CANNOT BE UNDONE! ⚠️${RESET}"
+        echo -n "Type 'DELETE' to confirm: "
+
+        read confirmation
+        debug_log "Confirmation: $confirmation"
+
+        if [[ "$confirmation" != "DELETE" ]]; then
+            echo "Cancelled"
+            debug_log "User cancelled deletion"
+            return 0
+        fi
     fi
 
     # Delete tables
