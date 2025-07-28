@@ -7,15 +7,21 @@
 DOTFILES_CONFIG_FILE="$HOME/.dotfiles-config"
 
 # Function to load configuration with defaults
+
+# Load user configuration with defaults
+#
+# This function sets default values for configuration variables and then overrides them
+# with user-defined values from ~/.dotfiles-config. If the file does not exist, the default
+# values are used.
 load_dotfiles_config() {
     # Set default values
     PLUGIN_SKIP_LIST="wordfence akismet updraftplus"
-    WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l hisense-l pelican-l pricing-l rippercorp-l advocate-l toshiba-l"
+    WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l pelican-l pricing-l toshiba-l"
     UPLOAD_EXCLUDES="*.pdf *.docx *.zip"
     SSH_TIMEOUT="10"
     DEFAULT_MEMORY_LIMIT="512M"
     DEFAULT_MAX_MEMORY_LIMIT="1024M"
-    
+
     # Load user configuration if it exists
     if [[ -f "$DOTFILES_CONFIG_FILE" ]]; then
         source "$DOTFILES_CONFIG_FILE"
@@ -38,11 +44,11 @@ create_default_config() {
 
 # WordPress Plugin Diagnostics Configuration
 # List of plugins to skip during wp_plugin_diags testing
-# PLUGIN_SKIP_LIST="wordfence akismet updraftplus custom-plugin"
+# PLUGIN_SKIP_LIST="wordfence akismet updraftplus"
 
-# WooCommerce Update Hosts Configuration  
+# WooCommerce Update Hosts Configuration
 # List of SSH host aliases for update-wc-db function
-# WC_HOSTS="site1-l site2-l site3-l"
+# WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l pelican-l pricing-l toshiba-l"
 
 # Upload Sync Configuration
 # File patterns to exclude during upload sync (getups/pushups)
@@ -82,7 +88,7 @@ EOF
 # Function to show current configuration
 show_dotfiles_config() {
     load_dotfiles_config
-    
+
     echo "Current Dotfiles Configuration"
     echo "=============================="
     echo ""
@@ -101,7 +107,7 @@ show_dotfiles_config() {
     echo "  Memory Limit: $DEFAULT_MEMORY_LIMIT"
     echo "  Max Memory Limit: $DEFAULT_MAX_MEMORY_LIMIT"
     echo ""
-    
+
     if [[ ! -f "$DOTFILES_CONFIG_FILE" ]]; then
         echo "To create a configuration file:"
         echo "  dotfiles_config --create"
