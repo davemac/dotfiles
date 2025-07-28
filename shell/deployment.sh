@@ -150,24 +150,3 @@ depto() {
    rsync vendor/autoload.php "$sshalias":~/www/wp-content/themes/"$theme"/vendor
    rsync vendor/composer "$sshalias":~/www/wp-content/themes/"$theme"/vendor
 }
-
-# Get recent uploads
-getrecentuploads() {
-   current=${PWD##*/}
-   cd ~/Sites/$current/wp-content/uploads || return
-
-   TARGET=~/Sites/$current/wp-content/uploads
-   HOST=$current-l
-   SOURCE=/home/djerriwa/www/wp-content/uploads
-
-   touch $TARGET/last_sync
-
-   rsync \
-       -ahrv \
-       --update \
-       --files-from=<(ssh $HOST "find $SOURCE -type f -newer $SOURCE/last_sync -exec realpath --relative-to=$SOURCE '{}' \;") \
-       $HOST:$SOURCE \
-       $TARGET
-
-   rsync $TARGET/last_sync $HOST:$SOURCE
-}
