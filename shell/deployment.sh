@@ -31,7 +31,15 @@ PHP
    wp @stage db import $current.sql
    wp @stage search-replace "$current.localhost" "$surl.dmctest.com.au" --all-tables --precise
 
-   rsync --exclude-from "rsync-exclude.txt" wp-content $current-s:~/www
+   # Create wp-content directory if it doesn't exist
+   ssh $current-s "mkdir -p ~/www/wp-content"
+
+   # Rsync theme and mu-plugins, including vendor directories
+   rsync --exclude-from "rsync-exclude.txt" wp-content/themes $current-s:~/www/wp-content/
+   rsync --exclude-from "rsync-exclude.txt" wp-content/mu-plugins $current-s:~/www/wp-content/
+   rsync --exclude-from "rsync-exclude.txt" wp-content/plugins $current-s:~/www/wp-content/
+
+    # rsync --exclude-from "rsync-exclude.txt" wp-content $current-s:~/www
 
    wp @stage plugin deactivate query-monitor acf-theme-code-pro wp-seopress
    wp @stage plugin delete query-monitor acf-theme-code-pro wp-seopress
@@ -79,7 +87,20 @@ PHP
    wp @prod plugin delete query-monitor acf-theme-code-pro
 }
 
-# Deploy the current theme to a specified remote server
+# Deploys the current theme to a specified remote server, either staging or production.
+#
+# Options:
+#   -auto   : Automatically determine the theme directory and SSH alias based on the current working directory.
+#   -target : Specify the deployment target, either 'staging' (default) or 'production'.
+#
+# Examples:
+#   depto                           # Deploy to staging, prompts for SSH alias and theme
+#   depto -auto                     # Auto-deploy current theme to staging
+#   depto -target staging           # Deploy to staging, prompts for SSH alias and theme
+#   depto -auto -target production  # Auto-deploy current theme to production
+#
+# The function uses rsync to transfer theme files to the specified remote server.
+# If -auto is not used, the user is prompted to enter the SSH alias and theme directory.
 depto() {
    auto=false
    target="staging"  # Default to staging
@@ -123,7 +144,7 @@ depto() {
        echo "$theme is the theme"
    fi
 
-   rsync dist *.php blocks theme.json acf-json lib page-templates post-types taxonomies template-parts wp-cli woocommerce "$sshalias":~/www/wp-content/themes/"$theme"
+   rsync dist *.php blocks acf-json lib page-templates post-types taxonomies template-parts wp-cli woocommerce "$sshalias":~/www/wp-content/themes/"$theme"
    rsync source/php "$sshalias":~/www/wp-content/themes/"$theme"/source
    rsync source/images "$sshalias":~/www/wp-content/themes/"$theme"/source
    rsync vendor/autoload.php "$sshalias":~/www/wp-content/themes/"$theme"/vendor
