@@ -156,9 +156,8 @@ listcmds() {
     echo -e "${CYAN}Example: ${GREEN}pullprod${CYAN}, ${GREEN}getups l${CYAN}, ${GREEN}wp_db_optimise${NC}"
 }
 
-# Download ALL Vimeo videos from embedded lesson pages with source URL metadata
+# Download ALL Vimeo videos from pages with source URL metadata
 # Usage: download_vimeo_hd <url>
-# Example: download_vimeo_hd https://countryguitaronline.com/lesson-page/
 download_vimeo_hd() {
     local url="$1"
     local vimeo_ids
@@ -168,7 +167,6 @@ download_vimeo_hd() {
     # Validate input
     if [[ -z "$url" ]]; then
         echo "Usage: download_vimeo_hd <URL>"
-        echo "Example: download_vimeo_hd https://countryguitaronline.com/lesson-page/"
         return 1
     fi
 
@@ -236,7 +234,6 @@ download_vimeo_hd() {
 
     if [[ $success_count -gt 0 ]]; then
         echo "📝 All videos have source URL metadata: $url"
-        echo "🎯 Ready for guitar practice!"
         return 0
     else
         echo "❌ No videos were downloaded successfully"

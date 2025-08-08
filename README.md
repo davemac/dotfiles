@@ -127,7 +127,7 @@ General system tools:
 - Directory navigation
 - Chrome proxy setup
 - `wp_download_images`: Download all images referenced in HTML from the clipboard into the site's `wp-content/uploads` directory. Recreates folder structure, skips existing valid images, and provides a success/skip/fail summary.
-- `download_vimeo_hd` / `dlvimeo`: Download all Vimeo videos from an embedded lesson page in HD and embed the source page URL as metadata.
+- `download_vimeo_hd` / `dlvimeo`: Download all Vimeo videos from a page in HD and embed the source page URL as metadata.
 
 ## Usage Examples
 
