@@ -126,6 +126,8 @@ General system tools:
 - Homebrew shortcuts
 - Directory navigation
 - Chrome proxy setup
+- `wp_download_images`: Download all images referenced in HTML from the clipboard into the site's `wp-content/uploads` directory. Recreates folder structure, skips existing valid images, and provides a success/skip/fail summary.
+- `download_vimeo_hd` / `dlvimeo`: Download all Vimeo videos from an embedded lesson page in HD and embed the source page URL as metadata.
 
 ## Usage Examples
 
@@ -140,6 +142,25 @@ getups l -latest  # Sync only last 2 months
 Push uploads to staging:
 ```bash
 pushups -auto -target s  # Auto-detect site and push to staging
+```
+
+### Media Utilities (utils.sh)
+Download images referenced in clipboard HTML into the current site's uploads directory:
+```bash
+# From within ~/Sites/yoursite (auto-detects site path)
+wp_download_images
+
+# Or specify the site path explicitly
+wp_download_images -p ~/Sites/yoursite
+```
+
+Download Vimeo videos from a lesson page (HD with source URL metadata):
+```bash
+# Use the short alias
+dlvimeo https://example.com/lesson-page/
+
+# Or the full function name
+download_vimeo_hd https://example.com/lesson-page/
 ```
 
 ### Database Operations
