@@ -149,6 +149,7 @@ listcmds() {
     echo -e "${GREEN}chromeproxy${NC}      Launch Chrome with proxy"
     echo -e "${GREEN}code${NC}             Open files in VSCode"
     echo -e "${GREEN}tb${NC}               Send text to termbin.com"
+    echo -e "${GREEN}wpdli${NC}            Download images from clipboard HTML to WordPress uploads"
     echo -e "${GREEN}listcmds${NC}         Display this command list"
     echo ""
 
@@ -246,11 +247,11 @@ download_vimeo_hd() {
 alias dlvimeo='download_vimeo_hd'
 
 
-# Download images referenced in clipboard HTML into a WordPress site's uploads directory.
+# Download images referenced in clipboard HTML into a WordPress site's wp-content directory.
 #
 # What it does:
-# - Extracts all unique image URLs under wp-content/uploads from clipboard HTML
-# - Recreates nested folders under wp-content/uploads locally
+# - Extracts all unique image URLs under wp-content from clipboard HTML
+# - Recreates nested folders under wp-content locally
 # - Skips existing valid images; replaces non-image files
 # - Validates remote Content-Type is image; removes invalid/empty files
 # - Shows an interactive confirmation with site, target, image count, and a clipboard preview (first 3 lines) before downloading
@@ -358,7 +359,7 @@ wp_download_images() {
         return 1
     fi
 
-    local UPLOADS_DIR="$LOCAL_SITE_PATH/wp-content/uploads"
+    local WP_CONTENT_DIR="$LOCAL_SITE_PATH/wp-content"
 
     echo "${BLUE}Reading HTML from clipboard...${NC}"
 
@@ -382,14 +383,14 @@ wp_download_images() {
             if [[ -n "$line" ]]; then
                 urls+=("$line")
             fi
-        done < <(echo "$html" | grep -oE "background-image:\s*url\(['\"]?([^'\"]*wp-content/uploads/[^'\"]*)['\"]?\)" | sed -E "s/.*url\(['\"]?([^'\"]*)['\"]?\).*/\1/")
+        done < <(echo "$html" | grep -oE "background-image:\s*url\(['\"]?([^'\"]*wp-content/[^'\"]*)['\"]?\)" | sed -E "s/.*url\(['\"]?([^'\"]*)['\"]?\).*/\1/")
 
         # Extract URLs from <img> src attributes
         while IFS= read -r line; do
             if [[ -n "$line" ]]; then
                 urls+=("$line")
             fi
-        done < <(echo "$html" | grep -oE "<img[^>]*src=['\"]([^'\"]*wp-content/uploads/[^'\"]*)['\"]" | sed -E "s/.*src=['\"]([^'\"]*)['\"].*/\1/")
+        done < <(echo "$html" | grep -oE "<img[^>]*src=['\"]([^'\"]*wp-content/[^'\"]*)['\"]" | sed -E "s/.*src=['\"]([^'\"]*)['\"].*/\1/")
 
         # Remove duplicates and return unique URLs
         printf '%s\n' "${urls[@]}" | sort -u
@@ -401,7 +402,7 @@ wp_download_images() {
 
     if [[ -z "$IMAGE_URLS_RAW" ]]; then
         echo "${RED}Error: No image URLs found in the HTML content${NC}"
-        echo "${YELLOW}Make sure the HTML contains images with wp-content/uploads paths${NC}"
+        echo "${YELLOW}Make sure the HTML contains images with wp-content paths${NC}"
         return 1
     fi
 
@@ -423,7 +424,7 @@ wp_download_images() {
     echo "${YELLOW}━━━ CONFIRMATION ━━━${NC}"
     echo "${BLUE}Site:${NC} ${LOCAL_SITE_PATH}"
     echo "${BLUE}Images to download:${NC} ${#IMAGE_URLS[@]}"
-    echo "${BLUE}Target directory:${NC} ${UPLOADS_DIR}"
+    echo "${BLUE}Target directory:${NC} ${WP_CONTENT_DIR}"
     echo ""
 
     # Show a preview of the clipboard content (first 3 lines)
@@ -444,7 +445,7 @@ wp_download_images() {
 
     echo "${BLUE}Starting image download process...${NC}"
     echo "Local site path: ${LOCAL_SITE_PATH}"
-    echo "Uploads directory: ${UPLOADS_DIR}"
+    echo "WP Content directory: ${WP_CONTENT_DIR}"
     echo ""
 
     # Check if the local site directory exists
@@ -453,24 +454,24 @@ wp_download_images() {
         return 1
     fi
 
-    # Create the uploads directory if it doesn't exist
-    if [[ ! -d "$UPLOADS_DIR" ]]; then
-        echo "${YELLOW}Creating uploads directory: $UPLOADS_DIR${NC}"
-        mkdir -p "$UPLOADS_DIR"
+    # Create the wp-content directory if it doesn't exist
+    if [[ ! -d "$WP_CONTENT_DIR" ]]; then
+        echo "${YELLOW}Creating wp-content directory: $WP_CONTENT_DIR${NC}"
+        mkdir -p "$WP_CONTENT_DIR"
     fi
 
     # Function to extract the relative path from the full URL
     local extract_relative_path() {
         local url="$1"
-        # Remove everything up to and including "wp-content/uploads/"
-        echo "${url#*wp-content/uploads/}"
+        # Remove everything up to and including "wp-content/"
+        echo "${url#*wp-content/}"
     }
 
     # Function to download a single image
     local download_image() {
         local url="$1"
         local relative_path=$(extract_relative_path "$url")
-        local local_file_path="$UPLOADS_DIR/$relative_path"
+        local local_file_path="$WP_CONTENT_DIR/$relative_path"
         local local_dir=$(dirname "$local_file_path")
 
         echo "${BLUE}Processing: $relative_path${NC}"
@@ -558,8 +559,8 @@ wp_download_images() {
         download_image "$url"
         case $? in
             0)
-                if [[ -f "$UPLOADS_DIR/$(extract_relative_path "$url")" ]]; then
-                    if [[ $(stat -f%z "$UPLOADS_DIR/$(extract_relative_path "$url")" 2>/dev/null || stat -c%s "$UPLOADS_DIR/$(extract_relative_path "$url")" 2>/dev/null) -gt 0 ]]; then
+                if [[ -f "$WP_CONTENT_DIR/$(extract_relative_path "$url")" ]]; then
+                    if [[ $(stat -f%z "$WP_CONTENT_DIR/$(extract_relative_path "$url")" 2>/dev/null || stat -c%s "$WP_CONTENT_DIR/$(extract_relative_path "$url")" 2>/dev/null) -gt 0 ]]; then
                         ((successful_downloads++))
                     else
                         ((skipped_downloads++))
