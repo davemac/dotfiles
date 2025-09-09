@@ -1,28 +1,80 @@
 # Global Configuration Management for Dotfiles
+# 
+# PURPOSE:
+# This file centralizes all configuration for dotfiles shell functions, allowing
+# personal customization without exposing sensitive values in the public repo.
 #
-# This file provides configuration management functionality for all dotfiles functions.
-# It loads user configurations from ~/.dotfiles-config and provides defaults.
+# HOW IT WORKS:
+# 1. Sets safe default values for all configuration variables
+# 2. Loads user-specific overrides from .dotfiles-config (git-ignored)
+# 3. Provides functions to create/edit/view the configuration file
+#
+# SECURITY:
+# The .dotfiles-config file is git-ignored and contains sensitive values like:
+# - DEV_WP_PASSWORD (WordPress development password)
+# - SSH_PROXY_HOST (SSH proxy server hostname)
+# - WC_HOSTS (list of production server aliases)
+#
+# This keeps personal credentials out of the public repository while
+# maintaining full functionality for the original user.
+#
+# ============================================================================
+# FUNCTION INDEX
+# ============================================================================
+#
+# Configuration Management:
+# • load_dotfiles_config       - Load configuration with defaults (auto-called)
+# • create_default_config      - Create default .dotfiles-config file 
+# • show_dotfiles_config       - Display current configuration settings
+# • dotfiles_config            - Main config management function
+#   - dotfiles_config --create   : Create default configuration file
+#   - dotfiles_config --show     : Display current configuration settings  
+#   - dotfiles_config --edit     : Edit configuration file with default editor
+#   - dotfiles_config --help     : Show detailed configuration help
+#
+# Variables Set:
+# • PLUGIN_SKIP_LIST           - Plugins to skip in wp_plugin_diags
+# • WC_HOSTS                   - SSH hosts for update-wc-db function
+# • UPLOAD_EXCLUDES            - File patterns to exclude in getups/pushups  
+# • SSH_TIMEOUT                - SSH connection timeout in seconds
+# • DEFAULT_MEMORY_LIMIT       - WordPress memory limit for optimization
+# • DEFAULT_MAX_MEMORY_LIMIT   - WordPress max memory limit
+# • DEV_WP_PASSWORD            - WordPress development password (override in config!)
+# • SSH_PROXY_HOST             - SSH proxy host for SOCKS tunneling (override in config!)
+#
+# ============================================================================
 
-# Configuration file path
-DOTFILES_CONFIG_FILE="$HOME/.dotfiles-config"
+# CONFIGURATION FILE LOCATION:
+# The .dotfiles-config file is stored in the dotfiles repo root directory.
+# This path resolution works regardless of which directory you source this from.
+_SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" 2>/dev/null || cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || cd "$(dirname "$0")" && pwd)"
+DOTFILES_CONFIG_FILE="$(cd "$_SCRIPT_DIR/.." && pwd)/.dotfiles-config"
 
 # Function to load configuration with defaults
 
-# Load user configuration with defaults
+# MAIN CONFIGURATION LOADER
+# 
+# This function is called automatically when config.sh is sourced.
+# It sets safe defaults for all variables, then overrides them with
+# user-specific values from .dotfiles-config (if the file exists).
 #
-# This function sets default values for configuration variables and then overrides them
-# with user-defined values from ~/.dotfiles-config. If the file does not exist, the default
-# values are used.
+# USAGE:
+#   load_dotfiles_config   # Called automatically, or manually reload config
+#
+# VARIABLES SET:
 load_dotfiles_config() {
-    # Set default values
-    PLUGIN_SKIP_LIST="wordfence akismet updraftplus"
-    WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l pelican-l pricing-l toshiba-l"
-    UPLOAD_EXCLUDES="*.pdf *.docx *.zip"
-    SSH_TIMEOUT="10"
-    DEFAULT_MEMORY_LIMIT="512M"
-    DEFAULT_MAX_MEMORY_LIMIT="1024M"
+    # DEFAULT VALUES (safe for public repo):
+    PLUGIN_SKIP_LIST="wordfence akismet updraftplus"          # Plugins to skip in wp_plugin_diags
+    WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l pelican-l pricing-l toshiba-l"  # SSH hosts for update-wc-db  
+    UPLOAD_EXCLUDES="*.pdf *.docx *.zip"                      # File patterns to exclude in getups/pushups
+    SSH_TIMEOUT="10"                                           # SSH connection timeout in seconds
+    DEFAULT_MEMORY_LIMIT="512M"                               # WordPress memory limit for wp_db_optimise
+    DEFAULT_MAX_MEMORY_LIMIT="1024M"                          # WordPress max memory limit
+    DEV_WP_PASSWORD="defaultpass"                             # Default WordPress dev password (OVERRIDE IN .dotfiles-config!)
+    SSH_PROXY_HOST="localhost"                                 # Default SSH proxy host (OVERRIDE IN .dotfiles-config!)
 
-    # Load user configuration if it exists
+    # LOAD USER OVERRIDES:
+    # If .dotfiles-config exists, source it to override the defaults above
     if [[ -f "$DOTFILES_CONFIG_FILE" ]]; then
         source "$DOTFILES_CONFIG_FILE"
     fi
@@ -76,6 +128,13 @@ create_default_config() {
 
 # Custom backup directory (defaults to site root)
 # BACKUP_DIR="$HOME/backups/dotfiles"
+
+# Security Configuration
+# Default WordPress development password
+# DEV_WP_PASSWORD="your-dev-password"
+
+# SSH proxy host for SOCKS tunneling
+# SSH_PROXY_HOST="your-proxy-host"
 EOF
 
     echo "✅ Default configuration file created at: $DOTFILES_CONFIG_FILE"
@@ -144,7 +203,7 @@ dotfiles_config() {
             echo ""
             echo "DESCRIPTION:"
             echo "  Manages global configuration for all dotfiles functions."
-            echo "  Configuration is stored in ~/.dotfiles-config"
+            echo "  Configuration is stored in $DOTFILES_CONFIG_FILE"
             echo ""
             echo "CUSTOMIZABLE SETTINGS:"
             echo "  • Plugin skip lists for diagnostics"

@@ -1,7 +1,44 @@
 # WordPress Upload Management Functions
 #
-# This file contains all functions related to uploading, downloading, and syncing
-# WordPress uploads directory between different environments (local, staging, production).
+# File synchronization functions for WordPress uploads directories.
+# Handles syncing files between local, staging, and production environments.
+#
+# ============================================================================
+# FUNCTION INDEX
+# ============================================================================
+#
+# Upload Sync Functions:
+# • getups [alias] [options]   - Sync WordPress uploads directory from remote to local
+#   - getups l                 : Sync from production (live)
+#   - getups s                 : Sync from staging
+#   - getups l -latest         : Sync only recent uploads (last 2 months)
+#   Options:
+#   - -latest                  : Only sync files modified in last 60 days
+#   - --dry-run               : Preview what would be synced without transferring
+#
+# • pushups [options]          - Push local uploads to remote server
+#   Options:
+#   - -auto                   : Auto-detect site and SSH alias
+#   - -target [staging|production] : Specify deployment target
+#   - --dry-run               : Preview what would be pushed without transferring
+#
+# • getrecentuploads [alias]   - Sync only recently modified uploads (last 60 days)
+#
+# Features:
+# • Automatic SSH connectivity validation before sync
+# • Progress bars and transfer statistics  
+# • Configurable exclusion patterns via UPLOAD_EXCLUDES config
+# • Directory structure preservation
+# • Resume capability for interrupted transfers
+# • Comprehensive error handling and logging
+# • Help flags (--help, -h) for detailed usage information
+#
+# Configuration:
+# • Uses UPLOAD_EXCLUDES from .dotfiles-config for file exclusion patterns
+# • Supports SSH timeout configuration via SSH_TIMEOUT
+# • Auto-detects WordPress root and uploads directory structure
+#
+# ============================================================================
 
 # Download uploads from a specified environment (staging or live) for the current site.
 #

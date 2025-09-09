@@ -1,9 +1,52 @@
+# System Utilities and Common Aliases
+#
+# A collection of useful system utilities, file operations, network tools,
+# development helpers, and general productivity functions.
+#
+# ============================================================================
+# FUNCTION INDEX
+# ============================================================================
+#
+# File System Utilities:
+# • showsize                   - Display directory sizes (alias: du -sh ./*)
+# • dsclean                    - Delete all .DS_Store files recursively  
+# • ls                         - Enhanced ls with colors and details (alias)
+# • up [N]                     - Move up N directories in the filesystem
+#
+# Network Utilities:
+# • myip                       - Display your public IP address
+# • socksit                    - Create SSH SOCKS proxy (uses SSH_PROXY_HOST config)
+# • chromeproxy                - Launch Chrome with SSH SOCKS proxy
+# • flushdns                   - Flush DNS cache and announce completion
+#
+# Development Tools:
+# • zp                         - Edit ~/.zprofile in Cursor (alias)
+# • sshconfig                  - Edit ~/.ssh/config in Cursor (alias)  
+# • code                       - Open files in VSCode with proper setup
+# • tb                         - Send text to termbin.com (alias: nc termbin.com 9999)
+#
+# Homebrew Utilities:
+# • brewup                     - Update Homebrew packages (alias)
+# • brewupc                    - Update Homebrew packages and cleanup (alias)
+#
+# Media Download Tools:
+# • ytaudio [URL]              - Download YouTube audio as MP3
+# • download_vimeo_hd [URL]    - Download all Vimeo videos from page in HD with metadata
+# • dlvimeo                    - Alias for download_vimeo_hd
+#
+# WordPress Utilities:
+# • wp_download_images         - Download images from clipboard HTML to wp-content/uploads
+# • wpdli                      - Alias for wp_download_images
+#
+# Information & Help:
+# • listcmds                   - Display all available dotfiles commands organized by category
+#
+# ============================================================================
+
 # File system utilities
 alias showsize="du -sh ./*"
 alias dsclean="find . -type f -name .DS_Store -delete"
 alias ls="ls -Ghal"
-alias rsync="rsync -avzW --progress"
-alias gbb="grunt buildbower"
 
 # Homebrew utilities
 alias brewup="brew update && brew upgrade"
@@ -11,7 +54,9 @@ alias brewupc="brew update && brew upgrade && brew cleanup"
 
 # Network utilities
 alias myip="curl ifconfig.co"
-alias socksit="ssh -D 8080 keith"
+# Load config for SSH proxy host
+load_dotfiles_config 2>/dev/null || true
+alias socksit="ssh -D 8080 ${SSH_PROXY_HOST:-localhost}"
 alias flushdns="sudo dscacheutil -flushcache;sudo killall -HUP mDNSResponder;say dns cache flushed"
 
 # Quick access to config files
@@ -40,7 +85,8 @@ up() {
 
 # Chrome with proxy
 chromeproxy() {
-   ssh -N -D 9090 keith
+   load_dotfiles_config 2>/dev/null || true
+   ssh -N -D 9090 "${SSH_PROXY_HOST:-localhost}"
 
    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
    --user-data-dir="$HOME/proxy-profile" \
@@ -83,7 +129,7 @@ listcmds() {
     echo -e "${GREEN}pullstage${NC}        Pull staging database to local"
     echo -e "${GREEN}pulltest${NC}         Pull testing database to local"
     echo -e "${GREEN}pushstage${NC}        Push local database to staging"
-    echo -e "${GREEN}dmcweb${NC}           Update admin password to 'dmcweb'"
+    echo -e "${GREEN}dmcweb${NC}           Update admin password to configured dev password"
     echo -e "${GREEN}check-featured-image${NC} Find posts missing featured images"
     echo -e "${GREEN}update-wc-db${NC}     Update WooCommerce on multiple hosts"
     echo -e "${GREEN}wp_db_optimise${NC}   Comprehensive database cleanup and optimization"
@@ -140,7 +186,7 @@ listcmds() {
     echo -e "${GREEN}brewup${NC}           Update Homebrew packages"
     echo -e "${GREEN}brewupc${NC}          Update and cleanup Homebrew"
     echo -e "${GREEN}myip${NC}             Display public IP address"
-    echo -e "${GREEN}socksit${NC}          SSH SOCKS proxy to keith"
+    echo -e "${GREEN}socksit${NC}          SSH SOCKS proxy to configured host"
     echo -e "${GREEN}flushdns${NC}         Flush DNS cache"
     echo -e "${GREEN}zp${NC}               Edit ~/.zprofile in Cursor"
     echo -e "${GREEN}sshconfig${NC}        Edit ~/.ssh/config in Cursor"
@@ -464,17 +510,42 @@ wp_download_images() {
     local extract_relative_path() {
         local url="$1"
         # Remove everything up to and including "wp-content/"
-        echo "${url#*wp-content/}"
+        local path="${url#*wp-content/}"
+        # Remove query parameters (everything after ?)
+        local clean_path="${path%%\?*}"
+        # Also remove WordPress size suffixes like -854x510, -690x400, etc.
+        # This regex removes -NNNxNNN pattern before the file extension
+        echo "$clean_path" | sed -E 's/-[0-9]+x[0-9]+(\.[^.]+)$/\1/'
+    }
+
+    # Function to URL encode for HTTP requests (pure shell solution)
+    local url_encode() {
+        local url="$1"
+        # Only encode spaces to %20, keep the rest as-is for simplicity
+        echo "$url" | sed 's/ /%20/g'
+    }
+
+    # Function to decode HTML entities
+    local decode_html_entities() {
+        echo "$1" | sed 's/&amp;/\&/g'
     }
 
     # Function to download a single image
     local download_image() {
         local url="$1"
-        local relative_path=$(extract_relative_path "$url")
+        local decoded_url=$(decode_html_entities "$url")
+        # Remove query parameters to get base image URL
+        local base_url="${decoded_url%%\?*}"
+        local encoded_url=$(url_encode "$base_url")
+        local relative_path=$(extract_relative_path "$decoded_url")
         local local_file_path="$WP_CONTENT_DIR/$relative_path"
         local local_dir=$(dirname "$local_file_path")
 
         echo "${BLUE}Processing: $relative_path${NC}"
+        echo "  ${YELLOW}Original:${NC}  $url"
+        echo "  ${YELLOW}Base URL:${NC}  $base_url"
+        echo "  ${YELLOW}Encoded:${NC}   $encoded_url"
+        echo "  ${YELLOW}Local file:${NC} $local_file_path"
 
         # Create the directory structure if it doesn't exist
         if [[ ! -d "$local_dir" ]]; then
@@ -500,7 +571,7 @@ wp_download_images() {
 
         # First, check if the URL is accessible and returns an image
         echo "  ${BLUE}Checking URL accessibility...${NC}"
-        local content_type=$(curl -I -L -s "$url" | grep -i "content-type:" | head -1 | cut -d: -f2 | tr -d ' \r')
+        local content_type=$(curl -I -L -s "$encoded_url" | grep -i "content-type:" | head -1 | cut -d: -f2 | tr -d ' \r')
 
         if [[ -z "$content_type" ]]; then
             echo "  ${RED}✗ Could not determine content type - server may not be responding${NC}"
@@ -518,7 +589,7 @@ wp_download_images() {
 
         # Download the image using curl
         echo "  ${BLUE}Downloading to: $local_file_path${NC}"
-        curl -L -s -o "$local_file_path" "$url"
+        curl -L -s -o "$local_file_path" "$encoded_url"
 
         # Check if download was successful
         if [[ $? -eq 0 ]] && [[ -f "$local_file_path" ]]; then

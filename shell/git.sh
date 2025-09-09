@@ -1,3 +1,37 @@
+# Git Utilities and Workflow Functions
+#
+# Git aliases and functions to streamline version control workflows,
+# branch management, and repository operations.
+#
+# ============================================================================
+# FUNCTION INDEX
+# ============================================================================
+#
+# Git Aliases:
+# • gs                         - Git status (alias: git status)
+# • ga                         - Git add (alias: git add)
+# • gca                        - Git commit all (alias: git commit -a)
+# • gc                         - Git commit (alias: git commit)
+# • gl                         - Formatted git log with graph, dates, and decoration
+# • glcss                      - Git log for CSS/Sass files from the last year with line numbers
+#
+# Branch Management:
+# • new_branch [options] <ticket_id> <title> - Create new branch from ticket ID and title
+#   Options:
+#   - -u                      : Create update/* branch instead of feature/*
+#   
+#   Examples:
+#   - new_branch IR-123 "add new feature"     → feature/IR-123-add-new-feature
+#   - new_branch -u IR-456 "update styles"    → update/IR-456-update-styles
+#
+#   Features:
+#   - Automatically sanitizes title for valid branch names
+#   - Converts to lowercase and replaces invalid characters with hyphens
+#   - Creates and switches to the new branch
+#   - Supports both feature and update branch prefixes
+#
+# ============================================================================
+
 # Git aliases
 alias gs="git status "
 alias ga="git add "

@@ -1,7 +1,44 @@
 # WordPress Diagnostics & Troubleshooting Functions
 #
-# This file contains functions for diagnosing and troubleshooting
-# WordPress issues, performance problems, and plugin conflicts.
+# Advanced diagnostic tools for identifying and resolving WordPress issues,
+# plugin conflicts, performance problems, and fatal errors.
+#
+# ============================================================================
+# FUNCTION INDEX
+# ============================================================================
+#
+# Plugin Diagnostics:
+# • wp_plugin_diags            - Systematically test plugins to isolate fatal errors
+#   Features:
+#   - Auto-detects site URL and active plugins
+#   - Tests each plugin individually by deactivation/reactivation
+#   - Monitors wp-content/debug.log for fatal errors  
+#   - Interactive mode stops when culprit is found
+#   - Configurable skip list for critical plugins (via PLUGIN_SKIP_LIST config)
+#   - Comprehensive logging to timestamped output files
+#   - Built-in safety checks and error handling
+#
+# Output Files:
+# • plugin_memory_test_YYYYMMDD_HHMMSS.txt - Detailed diagnostic results
+#
+# Configuration:
+# • Uses PLUGIN_SKIP_LIST from .dotfiles-config to skip critical plugins during testing
+# • Automatically loads site-specific WordPress configuration
+# • Requires wp-cli and WordPress debug logging to be enabled
+#
+# Usage Requirements:
+# • Must be run from WordPress root directory
+# • WordPress debug logging should be enabled (WP_DEBUG_LOG = true)
+# • wp-cli must be installed and functional
+# • Site must be accessible via HTTP/HTTPS for testing
+#
+# Safety Features:
+# • Always reactivates plugins after testing
+# • Validates WordPress installation before starting
+# • Comprehensive error handling and recovery
+# • Non-destructive testing approach
+#
+# ============================================================================
 
 # WordPress Plugin Fatal Error Diagnostic Function
 #
