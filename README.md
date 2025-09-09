@@ -20,55 +20,96 @@ dotfiles/
 └── README.md
 ```
 
+## How It Works
+
+This dotfiles system uses a **centralized configuration approach** that keeps sensitive information secure while maintaining full functionality:
+
+### 🔧 **Configuration System**
+- **`shell/config.sh`** - Central configuration manager with safe defaults
+- **`.dotfiles-config`** - Your personal settings file (git-ignored for security)
+- **Automatic loading** - Functions load config when needed, no manual setup required
+
+### 🔒 **Security Model**
+- All sensitive values (passwords, hostnames, API keys) are stored in `.dotfiles-config`
+- This file is **git-ignored** so it never gets committed to the public repository
+- Other users get safe defaults and can create their own personal configuration
+- You keep full functionality with your actual credentials
+
+### ⚡ **Loading Pattern**
+Each function automatically loads configuration when called:
+```bash
+load_dotfiles_config 2>/dev/null || true  # Safe loading pattern
+```
+
 ## Installation
 
-1. Clone this repository:
+1. **Clone this repository:**
     ```bash
     cd ~
     git clone git@github.com:davemac/dotfiles.git
     ```
 
-2. Create a symbolic link to your home directory:
+2. **Create symbolic link to your home directory:**
     ```bash
     ln -s ~/dotfiles/shell ~/.shell-functions
     ```
 
-3. Add the following to your `~/.zprofile`:
+3. **Add loading code to your shell config** (choose your shell):
+    
+    **For zsh (~/.zshrc):**
     ```bash
-
+    # Load shell functions (interactive features)
+    for file in ~/.shell-functions/*.sh; do
+        source "$file"
+    done
+    ```
+    
+    **For bash (~/.bashrc):**
+    ```bash
     # Load shell functions
     for file in ~/.shell-functions/*.sh; do
         source "$file"
-        # Force reload of aliases
-        alias -g
     done
     ```
 
-4. Reload your profile:
+4. **Reload your shell:**
     ```bash
-    source ~/.zprofile
+    source ~/.zshrc  # or ~/.bashrc
     ```
 
-5. Get started by viewing all available commands:
+5. **Create your personal configuration:**
     ```bash
-    listcmds
+    dotfiles_config --create  # Creates .dotfiles-config in repo root
+    dotfiles_config --edit    # Edit your personal settings
     ```
-    This will display a comprehensive list of all functions and aliases organized by category.
 
-6. (Optional) Configure dotfiles settings:
+6. **Get started:**
     ```bash
-    dotfiles_config --create  # Create default configuration file
-    dotfiles_config --edit    # Edit configuration settings
+    listcmds  # View all available commands organized by category
     ```
+
+### 🛠️ **First-Time Setup**
+After installation, you'll want to customize your `.dotfiles-config` file with your actual values:
+- `DEV_WP_PASSWORD` - Your preferred WordPress development password  
+- `SSH_PROXY_HOST` - Your SSH proxy server hostname
+- `WC_HOSTS` - Your WooCommerce production server aliases
+- And other personal settings...
 
 ## Function Groups
 
 ### Configuration Management (config.sh)
-Global configuration system for all dotfiles functions:
-- `dotfiles_config --create`: Create default configuration file
-- `dotfiles_config --show`: Display current configuration settings
-- `dotfiles_config --edit`: Edit configuration file with default editor
-- `load_dotfiles_config`: Load configuration (used internally by other functions)
+Central configuration system that manages all dotfiles settings securely:
+- `dotfiles_config --create`: Create your personal configuration file  
+- `dotfiles_config --show`: Display current configuration settings and values
+- `dotfiles_config --edit`: Edit configuration file with your default editor
+- `dotfiles_config --help`: Show detailed configuration help
+- `load_dotfiles_config`: Load configuration (used automatically by functions)
+
+**Key Features:**
+- 🔒 Keeps sensitive data out of the public repository
+- 🎯 Provides safe defaults for all users
+- ⚡ Auto-loads when functions need configuration  
+- 🛠️ Easy customization through simple config file
 
 ### WordPress Core Shortcuts (wp-core.sh)
 Essential WP-CLI aliases and shortcuts:
@@ -80,15 +121,26 @@ Essential WP-CLI aliases and shortcuts:
 
 ### Database Operations (wp-db.sh)
 All database-related functions consolidated:
-- `pullprod`: Pull production database to local environment
-- `pullstage`: Pull staging database to local
-- `pulltest`: Pull testing database to local
-- `pushstage`: Push local database to staging
-- `dmcweb`: Update admin password to 'dmcweb'
+
+**Database Sync Functions:**
+- `pullprod`: Pull production database to local environment (full sync)
+- `pullstage`: Pull staging database to local environment
+- `pulltest`: Pull testing database to local environment
+- `pushstage`: Push local database to staging environment
+- `pulldb`: Export production database to timestamped local file (alias)
+
+**User Management:**
+- `dmcweb [user]`: Update user password to configured dev password (defaults to admin)
+
+**Database Analysis:**
 - `check-featured-image`: Find posts missing featured images
-- `update-wc-db`: Update WooCommerce on multiple hosts
-- `wp_db_optimise` / `wpopt`: Comprehensive database cleanup and optimization
-- `wp_db_table_delete` / `wpdel`: Interactive database table cleanup
+
+**Multi-Host Operations:**
+- `update-wc-db`: Update WooCommerce database on multiple configured hosts
+
+**Database Optimization:**
+- `wp_db_optimise [options]` / `wpopt`: Comprehensive database cleanup and optimization
+- `wp_db_table_delete [options]` / `wpdel`: Interactive database table cleanup
 
 ### Upload Management (wp-uploads.sh)
 File sync operations between environments:
@@ -114,20 +166,45 @@ Deployment automation:
 - `depto`: Deploy theme files to staging or production
 
 ### Git Utilities (git.sh)
-Version control workflow:
+Version control workflow and convenient aliases:
 - `new_branch`: Create new branch from ticket ID and title
-- Various git aliases and shortcuts
+- `gs`: Git status (alias)
+- `ga`: Git add (alias)  
+- `gca`: Git commit all (alias)
+- `gc`: Git commit (alias)
+- `gl`: Formatted git log with graph, dates, and decoration
+- `glcss`: Git log for CSS/Sass files from the last year with line numbers
 
 ### System Utilities (utils.sh)
-General system tools:
+General system tools and productivity functions:
 - `listcmds`: Display all available commands and functions in a neat table
-- File system helpers
-- Network utilities
-- Homebrew shortcuts
-- Directory navigation
-- Chrome proxy setup
-- `wp_download_images`: Download all images referenced in HTML from the clipboard into the site's `wp-content/uploads` directory. Recreates folder structure, skips existing valid images, and provides a success/skip/fail summary.
-- `download_vimeo_hd` / `dlvimeo`: Download all Vimeo videos from a page in HD and embed the source page URL as metadata.
+
+**File System Utilities:**
+- `showsize`: Display directory sizes (alias: du -sh ./*)
+- `dsclean`: Delete all .DS_Store files recursively
+- `ls`: Enhanced ls with colors and details (alias)  
+- `up [N]`: Move up N directories in the filesystem
+
+**Network Utilities:**
+- `myip`: Display your public IP address
+- `socksit`: Create SSH SOCKS proxy (uses configured SSH_PROXY_HOST)
+- `chromeproxy`: Launch Chrome with SSH SOCKS proxy
+- `flushdns`: Flush DNS cache and announce completion
+
+**Development Tools:**
+- `zp`: Edit ~/.zprofile in Cursor (alias)
+- `sshconfig`: Edit ~/.ssh/config in Cursor (alias)
+- `code`: Open files in VSCode with proper setup
+- `tb`: Send text to termbin.com (alias)
+
+**Homebrew Utilities:**
+- `brewup`: Update Homebrew packages (alias)
+- `brewupc`: Update Homebrew packages and cleanup (alias)
+
+**Media Download Tools:**
+- `ytaudio [URL]`: Download YouTube audio as MP3
+- `download_vimeo_hd` / `dlvimeo`: Download all Vimeo videos from a page in HD with metadata
+- `wp_download_images` / `wpdli`: Download images from clipboard HTML to wp-content/uploads
 
 ## Usage Examples
 
@@ -230,22 +307,27 @@ listcmds  # Display comprehensive list of all functions and aliases
 
 ```
 ~/
-├── .shell-functions -> /Users/dave/dotfiles/shell/
-├── .dotfiles-config              # Optional: Global configuration file
+├── .shell-functions -> ~/dotfiles/shell/     # Symlink to shell functions  
 └── dotfiles/
     ├── shell/
-    │   ├── config.sh
-    │   ├── deployment.sh
-    │   ├── git.sh
-    │   ├── utils.sh
-    │   ├── wp-core.sh
-    │   ├── wp-db.sh
-    │   ├── wp-dev.sh
-    │   ├── wp-diagnostics.sh
-    │   └── wp-uploads.sh
-    ├── .gitignore
+    │   ├── config.sh                         # Central configuration system
+    │   ├── deployment.sh                     # Theme deployment functions
+    │   ├── git.sh                           # Git utilities
+    │   ├── utils.sh                         # System utilities
+    │   ├── wp-core.sh                       # WordPress shortcuts
+    │   ├── wp-db.sh                         # Database operations
+    │   ├── wp-dev.sh                        # Development tools
+    │   ├── wp-diagnostics.sh                # Troubleshooting
+    │   └── wp-uploads.sh                    # File sync operations
+    ├── .dotfiles-config                     # Your personal settings (git-ignored)
+    ├── .gitignore                           # Includes .dotfiles-config
     └── README.md
 ```
+
+### 📁 **Important Files:**
+- **`~/.shell-functions/`** - Symlink that makes all functions available in your shell
+- **`.dotfiles-config`** - Contains your personal/sensitive configuration values
+- **`.gitignore`** - Ensures `.dotfiles-config` is never committed to git
 
 ## Updating
 
@@ -256,7 +338,12 @@ cd ~/dotfiles
 git pull
 ```
 
-No additional steps needed as the symbolic link will always point to the current files.
+**No additional steps needed!** The symbolic link ensures you always use the latest files.
+
+### ⚠️ **Important Notes:**
+- Your `.dotfiles-config` file will never be overwritten during updates
+- New configuration options may be added - run `dotfiles_config --show` to see available settings
+- Functions automatically load the latest configuration when called
 
 ## Contributing
 

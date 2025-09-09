@@ -1,9 +1,67 @@
+# WordPress Theme Deployment Functions
+#
+# Automated deployment functions for WordPress themes and sites.
+# Handles initial setup and ongoing deployments to staging and production environments.
+#
+# ============================================================================
+# FUNCTION INDEX
+# ============================================================================
+#
+# Initial Deployment Functions:
+# • firstdeploy                - Complete initial site deployment to staging server
+#   Features:
+#   - Prompts for staging URL fragment and database credentials
+#   - Exports local database and transfers to staging
+#   - Downloads WordPress core to staging server
+#   - Creates wp-config.php with staging-specific settings
+#   - Imports database and performs URL replacement
+#   - Syncs theme files, mu-plugins, and plugins
+#   - Configures staging-specific plugin states
+#   - Sets proper file permissions (755/644)
+#
+# • firstdeploy-prod           - Complete initial site deployment to production server
+#   Features:
+#   - Prompts for production database credentials and live URL
+#   - Similar process to staging but with production configurations
+#   - Uses @prod wp-cli alias for remote operations
+#   - Omits staging-specific settings and plugins
+#
+# Ongoing Deployment Functions:
+# • depto [options]            - Deploy theme files to staging or production
+#   Options:
+#   - -auto                   : Auto-detect theme directory and SSH alias
+#   - -target [staging|production] : Specify deployment target (default: staging)
+#   
+#   Manual mode prompts:
+#   - SSH alias (e.g., sitename-s for staging, sitename-l for production)  
+#   - Theme directory name
+#
+#   Deployment includes:
+#   - dist/ directory (compiled assets)
+#   - PHP files (*.php)
+#   - blocks/ directory (block definitions)
+#   - acf-json/ directory (ACF field configurations)
+#   - lib/ directory (custom libraries)
+#   - Template directories (page-templates, post-types, taxonomies, template-parts)
+#   - wp-cli/ directory (WP-CLI commands)
+#   - woocommerce/ directory (WooCommerce customizations)
+#   - source/php and source/images directories
+#   - vendor/autoload.php and vendor/composer/ (Composer dependencies)
+#
+# Configuration:
+# • Requires wp-cli with configured remote aliases (@stage, @prod)
+# • Uses environment variables for API keys (WP_ACF_PRO_LICENSE, WP_GOOGLE_API_KEY)
+# • Requires SSH access to target servers with proper key authentication
+# • Expects rsync-exclude.txt file for file exclusion patterns
+#
+# ============================================================================
+
 # For initial site deployment to staging server
 firstdeploy() {
    current=${PWD##*/}
    cd ~/Sites/$current || return
 
-   echo "Staging url fragment (eg dmcweb):"
+   echo "Staging url fragment (eg staging-subdomain):"
    read surl
    echo "Staging database name:"
    read dbname

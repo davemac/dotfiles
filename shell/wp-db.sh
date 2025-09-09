@@ -1,3 +1,54 @@
+# WordPress Database Operations
+#
+# Comprehensive database management functions for WordPress development.
+# Handles database syncing, optimization, cleanup, and maintenance tasks.
+#
+# ============================================================================
+# FUNCTION INDEX  
+# ============================================================================
+#
+# Database Sync Functions:
+# • pullprod                   - Pull production database to local environment (full sync)
+# • pullstage                  - Pull staging database to local environment  
+# • pulltest                   - Pull testing database to local environment
+# • pushstage                  - Push local database to staging environment
+# • pulldb                     - Export production database to timestamped local file (alias)
+#
+# User Management:
+# • dmcweb [user]              - Update user password to configured dev password (defaults to admin)
+#
+# Database Analysis:
+# • check-featured-image       - Find posts missing featured images
+#
+# Multi-Host Operations:
+# • update-wc-db               - Update WooCommerce database on multiple configured hosts
+#
+# Database Optimization:
+# • wp_db_optimise [site] [options] - Comprehensive database cleanup and optimization 
+# • wpopt                      - Alias for wp_db_optimise
+#   Options:
+#   - --skip-plugins           : Skip plugin deactivation/activation
+#   - --dry-run               : Preview changes without executing
+#
+# Database Table Management:
+# • wp_db_table_delete [options] - Interactive database table cleanup with safety levels
+# • wpdel                      - Alias for wp_db_table_delete  
+#   Options:
+#   - --dry-run               : Preview tables without deleting
+#
+# Internal Helper Functions:
+# • pullstage_dry_run_preview  - Preview pushstage operation changes
+# • wp_db_optimise_dry_run_preview - Preview optimization changes
+#
+# All functions support:
+# • Automatic configuration loading from .dotfiles-config
+# • Built-in safety checks and connectivity validation  
+# • Backup creation before destructive operations
+# • Detailed progress reporting and error handling
+# • Help flags (--help, -h) for detailed usage information
+#
+# ============================================================================
+
 # WordPress Database Sync Function
 #
 # pullprod() - Syncs a WordPress database from production to local environment
@@ -57,7 +108,7 @@ pullprod() {
         echo "WHAT CHANGES:"
         echo "  • Local database replaced with production data"
         echo "  • URLs updated to https://sitename.localhost"
-        echo "  • Admin password set to 'dmcweb'"
+        echo "  • Admin password set to configured dev password"
         echo "  • Development plugins activated"
         echo "  • Production-only plugins deactivated"
         echo ""
@@ -220,8 +271,9 @@ pullprod() {
     wp search-replace "$PROD_URL" "$LOCAL_URL" --all-tables --precise || warning "Search-replace operation may not have completed successfully"
 
     # Set local development credentials
+    load_dotfiles_config 2>/dev/null || true
     message "Updating admin user password..."
-    wp user update admin --user_pass=dmcweb
+    wp user update admin --user_pass="${DEV_WP_PASSWORD:-defaultpass}"
 
     # Update WordPress components
     message "Updating WordPress core, plugins, themes and languages..."
@@ -241,7 +293,7 @@ pullprod() {
     # Success messages
     message "Database sync completed successfully!"
     message "Production database imported to local environment."
-    message "Admin password updated to: dmcweb"
+    message "Admin password updated to: ${DEV_WP_PASSWORD:-defaultpass}"
     message "Login URL: $LOCAL_URL/wp-admin/"
 }
 
@@ -519,10 +571,11 @@ check-featured-image() {
     wp db query "SELECT ID FROM $(wp db prefix)posts WHERE post_type='post' AND post_status='publish' AND ID NOT IN (SELECT post_id FROM $(wp db prefix)postmeta WHERE meta_key='_thumbnail_id');" --skip-column-names
 }
 
-# Update user password to 'dmcweb'. Defaults to 'admin' user ID.
+# Update user password to configured dev password. Defaults to 'admin' user ID.
 dmcweb() {
+    load_dotfiles_config 2>/dev/null || true
     local user_id=${1:-admin}
-    wp user update "$user_id" --user_pass=dmcweb
+    wp user update "$user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}"
 }
 
 # Update WooCommerce on multiple hosts

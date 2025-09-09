@@ -5,3 +5,6 @@
 .CLAUDE.md
 .specstory
 .cursor*
+
+# User-specific dotfiles configuration with sensitive values
+.dotfiles-config
