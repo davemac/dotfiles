@@ -93,9 +93,9 @@ PHP
    ssh $current-s "mkdir -p ~/www/wp-content"
 
    # Rsync theme and mu-plugins, including vendor directories
-   rsync --exclude-from "rsync-exclude.txt" wp-content/themes $current-s:~/www/wp-content/
-   rsync --exclude-from "rsync-exclude.txt" wp-content/mu-plugins $current-s:~/www/wp-content/
-   rsync --exclude-from "rsync-exclude.txt" wp-content/plugins $current-s:~/www/wp-content/
+   rsync --exclude-from "rsync-exclude.txt" wp-content/themes/ $current-s:~/www/wp-content/themes/
+   rsync --exclude-from "rsync-exclude.txt" wp-content/mu-plugins/ $current-s:~/www/wp-content/mu-plugins/
+   rsync --exclude-from "rsync-exclude.txt" wp-content/plugins/ $current-s:~/www/wp-content/plugins/
 
     # rsync --exclude-from "rsync-exclude.txt" wp-content $current-s:~/www
 
@@ -104,9 +104,7 @@ PHP
    wp @stage option update blog_public 0
    wp rewrite flush
 
-   cd ~/www/wp-content
-   find . -type d -exec chmod 755 {} \;
-   find . -type f -exec chmod 644 {} \;
+   ssh $current-s "cd ~/www/wp-content && find . -type d -exec chmod 755 {} \; && find . -type f -exec chmod 644 {} \;"
 }
 
 # For initial site deployment to production server
