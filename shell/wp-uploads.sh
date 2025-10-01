@@ -128,7 +128,25 @@ getups() {
         return 1
     fi
 
-    ssh_alias="$current-$1"
+    # Determine SSH alias from WP-CLI config or fall back to directory name
+    local wp_alias=""
+    if [ "$1" = "l" ]; then
+        wp_alias="@prod"
+    elif [ "$1" = "s" ]; then
+        wp_alias="@stage"
+    fi
+
+    ssh_alias=""
+    # Try to get SSH alias from WP-CLI configuration
+    if [ -n "$wp_alias" ] && command -v wp > /dev/null 2>&1; then
+        # Get the SSH host from WP-CLI alias configuration
+        ssh_alias=$(wp cli alias get "$wp_alias" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
+    fi
+
+    # Fall back to directory-based naming if WP-CLI lookup failed
+    if [ -z "$ssh_alias" ]; then
+        ssh_alias="$current-$1"
+    fi
 
     # Pre-check: Validate SSH configuration exists
     if ! grep -q "^Host $ssh_alias$" ~/.ssh/config; then
@@ -269,8 +287,27 @@ pushups() {
             return 1
         fi
         current=${PWD##*/}
-        sshalias="${current}-${target}"
         sitedir="$current"
+
+        # Determine SSH alias from WP-CLI config or fall back to directory name
+        local wp_alias=""
+        if [ "$target" = "l" ]; then
+            wp_alias="@prod"
+        elif [ "$target" = "s" ]; then
+            wp_alias="@stage"
+        fi
+
+        sshalias=""
+        # Try to get SSH alias from WP-CLI configuration
+        if [ -n "$wp_alias" ] && command -v wp > /dev/null 2>&1; then
+            # Get the SSH host from WP-CLI alias configuration
+            sshalias=$(wp cli alias get "$wp_alias" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
+        fi
+
+        # Fall back to directory-based naming if WP-CLI lookup failed
+        if [ -z "$sshalias" ]; then
+            sshalias="${current}-${target}"
+        fi
     else
         echo "Enter SSH alias to deploy to (without -s/-l suffix):"
         read -r sitename
@@ -339,8 +376,19 @@ getrecentuploads() {
    cd ~/Sites/$current/wp-content/uploads || return
 
    TARGET=~/Sites/$current/wp-content/uploads
-   HOST=$current-l
    SOURCE=/home/djerriwa/www/wp-content/uploads
+
+   # Determine SSH alias from WP-CLI config or fall back to directory name
+   HOST=""
+   if command -v wp > /dev/null 2>&1; then
+       # Get the SSH host from WP-CLI @prod alias configuration
+       HOST=$(wp cli alias get "@prod" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
+   fi
+
+   # Fall back to directory-based naming if WP-CLI lookup failed
+   if [ -z "$HOST" ]; then
+       HOST="$current-l"
+   fi
 
    touch $TARGET/last_sync
 
