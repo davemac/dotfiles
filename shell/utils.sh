@@ -114,6 +114,14 @@ listcmds() {
     echo -e "${BLUE}========================================${NC}"
     echo ""
 
+    # Configuration Management
+    echo -e "${BOLD}${YELLOW}Configuration Management (config.sh)${NC}"
+    echo -e "${GREEN}dotfiles_config${NC}  Manage dotfiles configuration"
+    echo -e "${GREEN}show_dotfiles_config${NC} Display current configuration settings"
+    echo -e "${GREEN}create_default_config${NC} Create default .dotfiles-config file"
+    echo -e "${GREEN}load_dotfiles_config${NC} Load configuration with defaults (auto-called)"
+    echo ""
+
     # WordPress Core Shortcuts
     echo -e "${BOLD}${YELLOW}WordPress Core Shortcuts (wp-core.sh)${NC}"
     echo -e "${GREEN}updatem${NC}          Update all plugins, themes, and WordPress core"
@@ -128,12 +136,14 @@ listcmds() {
     echo -e "${GREEN}pullprod${NC}         Pull production database to local environment"
     echo -e "${GREEN}pullstage${NC}        Pull staging database to local"
     echo -e "${GREEN}pulltest${NC}         Pull testing database to local"
-    echo -e "${GREEN}pushstage${NC}        Push local database to staging"
+    echo -e "${GREEN}pushstage${NC}        Push local database to staging (--dry-run available)"
+    echo -e "${GREEN}pushstage_dry_run_preview${NC} Preview pushstage operation changes"
     echo -e "${GREEN}dmcweb${NC}           Update admin password to configured dev password"
     echo -e "${GREEN}check-featured-image${NC} Find posts missing featured images"
     echo -e "${GREEN}update-wc-db${NC}     Update WooCommerce on multiple hosts"
     echo -e "${GREEN}wp_db_optimise${NC}   Comprehensive database cleanup and optimization"
     echo -e "${GREEN}wpopt${NC}            Alias for wp_db_optimise"
+    echo -e "${GREEN}wp_db_optimise_dry_run_preview${NC} Preview optimization changes"
     echo -e "${GREEN}wp_db_table_delete${NC} Interactive database table cleanup"
     echo -e "${GREEN}wpdel${NC}            Alias for wp_db_table_delete"
     echo -e "${GREEN}pulldb${NC}           Export production database to local file"
@@ -141,9 +151,9 @@ listcmds() {
 
     # Upload Management
     echo -e "${BOLD}${YELLOW}Upload Management (wp-uploads.sh)${NC}"
-    echo -e "${GREEN}getups${NC}           Sync WordPress uploads directory from remote"
-    echo -e "${GREEN}pushups${NC}          Push uploads to remote server"
-    echo -e "${GREEN}getrecentuploads${NC} Sync only recently modified uploads"
+    echo -e "${GREEN}getups${NC}           Sync WordPress uploads directory from remote (l/s/-latest)"
+    echo -e "${GREEN}pushups${NC}          Push uploads to remote server (-auto/-target)"
+    echo -e "${GREEN}getrecentuploads${NC} Sync only recently modified uploads (last 60 days)"
     echo ""
 
     # Development Tools
@@ -177,25 +187,47 @@ listcmds() {
     echo -e "${GREEN}glcss${NC}            Git log for CSS files from last year"
     echo ""
 
-    # System Utilities
-    echo -e "${BOLD}${YELLOW}System Utilities (utils.sh)${NC}"
+    # File System & Navigation
+    echo -e "${BOLD}${YELLOW}File System & Navigation (utils.sh)${NC}"
     echo -e "${GREEN}showsize${NC}         Display directory sizes"
-    echo -e "${GREEN}dsclean${NC}          Delete .DS_Store files"
+    echo -e "${GREEN}dsclean${NC}          Delete .DS_Store files recursively"
     echo -e "${GREEN}ls${NC}               Enhanced ls with colors and details"
-    echo -e "${GREEN}rsync${NC}            Enhanced rsync with progress"
-    echo -e "${GREEN}brewup${NC}           Update Homebrew packages"
-    echo -e "${GREEN}brewupc${NC}          Update and cleanup Homebrew"
+    echo -e "${GREEN}up [N]${NC}           Move up N directories"
+    echo ""
+
+    # Network & Connectivity
+    echo -e "${BOLD}${YELLOW}Network & Connectivity (utils.sh)${NC}"
     echo -e "${GREEN}myip${NC}             Display public IP address"
     echo -e "${GREEN}socksit${NC}          SSH SOCKS proxy to configured host"
+    echo -e "${GREEN}chromeproxy${NC}      Launch Chrome with SSH proxy"
     echo -e "${GREEN}flushdns${NC}         Flush DNS cache"
+    echo -e "${GREEN}tb${NC}               Send text to termbin.com"
+    echo ""
+
+    # Development Environment
+    echo -e "${BOLD}${YELLOW}Development Environment (utils.sh)${NC}"
     echo -e "${GREEN}zp${NC}               Edit ~/.zprofile in Cursor"
     echo -e "${GREEN}sshconfig${NC}        Edit ~/.ssh/config in Cursor"
-    echo -e "${GREEN}ytaudio${NC}          Download YouTube audio as MP3"
-    echo -e "${GREEN}up${NC}               Move up X directories"
-    echo -e "${GREEN}chromeproxy${NC}      Launch Chrome with proxy"
     echo -e "${GREEN}code${NC}             Open files in VSCode"
-    echo -e "${GREEN}tb${NC}               Send text to termbin.com"
-    echo -e "${GREEN}wpdli${NC}            Download images from clipboard HTML to WordPress uploads"
+    echo ""
+
+    # Package Management
+    echo -e "${BOLD}${YELLOW}Package Management (utils.sh)${NC}"
+    echo -e "${GREEN}brewup${NC}           Update Homebrew packages"
+    echo -e "${GREEN}brewupc${NC}          Update and cleanup Homebrew"
+    echo ""
+
+    # Media & Downloads
+    echo -e "${BOLD}${YELLOW}Media & Downloads (utils.sh)${NC}"
+    echo -e "${GREEN}ytaudio${NC}          Download YouTube audio as MP3"
+    echo -e "${GREEN}download_vimeo_hd${NC} Download Vimeo videos in HD with metadata"
+    echo -e "${GREEN}dlvimeo${NC}          Alias for download_vimeo_hd"
+    echo -e "${GREEN}wp_download_images${NC} Download images from clipboard HTML to WordPress"
+    echo -e "${GREEN}wpdli${NC}            Alias for wp_download_images"
+    echo ""
+
+    # Help & Documentation
+    echo -e "${BOLD}${YELLOW}Help & Documentation${NC}"
     echo -e "${GREEN}listcmds${NC}         Display this command list"
     echo ""
 
