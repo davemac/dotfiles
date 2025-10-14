@@ -273,7 +273,14 @@ pullprod() {
     # Set local development credentials
     load_dotfiles_config 2>/dev/null || true
     message "Updating admin user password..."
-    wp user update admin --user_pass="${DEV_WP_PASSWORD:-defaultpass}"
+    # Get first admin user ID, fallback to user ID 1
+    local admin_user_id=$(wp user list --role=administrator --field=ID --format=csv 2>/dev/null | head -n1)
+    admin_user_id=${admin_user_id:-1}
+    if wp user update "$admin_user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}" 2>/dev/null; then
+        message "Admin password updated successfully"
+    else
+        warning "Failed to update admin password for user ID: $admin_user_id"
+    fi
 
     # Update WordPress components
     message "Updating WordPress core, plugins, themes and languages..."
