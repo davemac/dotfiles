@@ -76,7 +76,7 @@ up() {
    do
        d=$d/..
    done
-   d=$(echo $d | sed 's/^\///')
+   d=$(echo $d | /usr/bin/sed 's/^\///')
    if [ -z "$d" ]; then
        d=..
    fi
@@ -461,14 +461,14 @@ wp_download_images() {
             if [[ -n "$line" ]]; then
                 urls+=("$line")
             fi
-        done < <(echo "$html" | grep -oE "background-image:\s*url\(['\"]?([^'\"]*wp-content/[^'\"]*)['\"]?\)" | sed -E "s/.*url\(['\"]?([^'\"]*)['\"]?\).*/\1/")
+        done < <(echo "$html" | grep -oE "background-image:\s*url\(['\"]?([^'\"]*wp-content/[^'\"]*)['\"]?\)" | /usr/bin/sed -E "s/.*url\(['\"]?([^'\"]*)['\"]?\).*/\1/")
 
         # Extract URLs from <img> src attributes
         while IFS= read -r line; do
             if [[ -n "$line" ]]; then
                 urls+=("$line")
             fi
-        done < <(echo "$html" | grep -oE "<img[^>]*src=['\"]([^'\"]*wp-content/[^'\"]*)['\"]" | sed -E "s/.*src=['\"]([^'\"]*)['\"].*/\1/")
+        done < <(echo "$html" | grep -oE "<img[^>]*src=['\"]([^'\"]*wp-content/[^'\"]*)['\"]" | /usr/bin/sed -E "s/.*src=['\"]([^'\"]*)['\"].*/\1/")
 
         # Remove duplicates and return unique URLs
         printf '%s\n' "${urls[@]}" | sort -u
@@ -507,7 +507,7 @@ wp_download_images() {
 
     # Show a preview of the clipboard content (first 3 lines)
     echo "${BLUE}Clipboard preview:${NC}"
-    echo "$HTML_CONTENT" | head -3 | sed 's/^/  /'
+    echo "$HTML_CONTENT" | head -3 | /usr/bin/sed 's/^/  /'
     if [[ $(echo "$HTML_CONTENT" | wc -l) -gt 3 ]]; then
         echo "  ${YELLOW}... ($(echo "$HTML_CONTENT" | wc -l) total lines)${NC}"
     fi
@@ -547,19 +547,19 @@ wp_download_images() {
         local clean_path="${path%%\?*}"
         # Also remove WordPress size suffixes like -854x510, -690x400, etc.
         # This regex removes -NNNxNNN pattern before the file extension
-        echo "$clean_path" | sed -E 's/-[0-9]+x[0-9]+(\.[^.]+)$/\1/'
+        echo "$clean_path" | /usr/bin/sed -E 's/-[0-9]+x[0-9]+(\.[^.]+)$/\1/'
     }
 
     # Function to URL encode for HTTP requests (pure shell solution)
     local url_encode() {
         local url="$1"
         # Only encode spaces to %20, keep the rest as-is for simplicity
-        echo "$url" | sed 's/ /%20/g'
+        echo "$url" | /usr/bin/sed 's/ /%20/g'
     }
 
     # Function to decode HTML entities
     local decode_html_entities() {
-        echo "$1" | sed 's/&amp;/\&/g'
+        echo "$1" | /usr/bin/sed 's/&amp;/\&/g'
     }
 
     # Function to download a single image
