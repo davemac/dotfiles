@@ -11,8 +11,10 @@
 # • getups [alias] [options]   - Sync WordPress uploads directory from remote to local
 #   - getups l                 : Sync from production (live)
 #   - getups s                 : Sync from staging
+#   - getups l -week           : Sync only uploads from last 7 days
 #   - getups l -latest         : Sync only recent uploads (last 2 months)
 #   Options:
+#   - -week                    : Only sync files modified in last 7 days
 #   - -latest                  : Only sync files modified in last 60 days
 #   - --dry-run               : Preview what would be synced without transferring
 #
@@ -49,11 +51,13 @@
 # Usage:
 #   getups s           # Download all uploads from staging
 #   getups l           # Download all uploads from live
+#   getups s -week     # Download only last 7 days from staging
+#   getups l -week     # Download only last 7 days from live
 #   getups s -latest   # Download only last 2 months from staging
 #   getups l -latest   # Download only last 2 months from live
 # Arguments:
 #   $1 - Environment specifier ('s' for staging, 'l' for live).
-#   $2 - Optional '-latest' flag to download only the last 2 months of uploads.
+#   $2 - Optional '-week' flag to download only files from the last 7 days, or '-latest' flag to download only the last 2 months of uploads.
 #
 # Returns:
 #   1 - If an error occurs (e.g., directory not found, missing arguments, SSH alias not found).
@@ -71,6 +75,8 @@ getups() {
         echo "USAGE:"
         echo "  getups s                            # Download all uploads from staging"
         echo "  getups l                            # Download all uploads from live"
+        echo "  getups s -week                      # Download only last 7 days from staging"
+        echo "  getups l -week                      # Download only last 7 days from live"
         echo "  getups s -latest                    # Download only last 2 months from staging"
         echo "  getups l -latest                    # Download only last 2 months from live"
         echo "  getups --help                       # Show this help message"
@@ -80,6 +86,7 @@ getups() {
         echo "  l                   Live/production environment"
         echo ""
         echo "OPTIONS:"
+        echo "  -week               Download only files modified in the last 7 days"
         echo "  -latest             Download only current and previous month uploads"
         echo "  --help, -h          Show this help message"
         echo ""
@@ -98,7 +105,8 @@ getups() {
         echo "  • *.docx files (excluded by default)"
         echo ""
         echo "EXAMPLES:"
-        echo "  cd ~/Sites/mysite && getups s       # Download all staging uploads"
+        echo "  cd ~/Sites/mysite && getups s         # Download all staging uploads"
+        echo "  cd ~/Sites/mysite && getups l -week   # Download last week's live uploads"
         echo "  cd ~/Sites/mysite && getups l -latest # Download recent live uploads"
         echo ""
         echo "SSH CONFIG:"
@@ -195,7 +203,21 @@ getups() {
     fi
     echo "✅ Remote uploads directory verified"
 
-    if [ "$2" = "-latest" ]; then
+    if [ "$2" = "-week" ]; then
+        # Build exclude options from configuration
+        local -a exclude_opts=()
+        for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
+            exclude_opts+=(--exclude "$pattern")
+        done
+
+        echo "📁 Syncing uploads from $ssh_alias modified in the last 7 days..."
+
+        # Use rsync with files-from to only sync files modified in last 7 days
+        rsync -av --progress \
+            "${exclude_opts[@]}" \
+            --files-from=<(ssh "$ssh_alias" "cd \$HOME/www/wp-content/uploads && find . -type f -mtime -7 | sed 's|^\./||'") \
+            "$ssh_alias:~/www/wp-content/uploads/" .
+    elif [ "$2" = "-latest" ]; then
         current_year=$(date +%Y)
         current_month=$(date +%m)
         prev_month=$((current_month - 1))
