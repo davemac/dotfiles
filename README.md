@@ -7,6 +7,7 @@ My collection of shell functions and configuration files for WordPress developme
 ```
 dotfiles/
 ├── shell/
+│   ├── cloudflare.sh     # Cloudflare zone management (cf-opt, cf-check)
 │   ├── config.sh         # Global configuration management
 │   ├── deployment.sh      # Theme deployment (firstdeploy, depto)
 │   ├── git.sh            # Git utilities and branch management
@@ -108,8 +109,29 @@ Central configuration system that manages all dotfiles settings securely:
 **Key Features:**
 - 🔒 Keeps sensitive data out of the public repository
 - 🎯 Provides safe defaults for all users
-- ⚡ Auto-loads when functions need configuration  
+- ⚡ Auto-loads when functions need configuration
 - 🛠️ Easy customization through simple config file
+
+### Cloudflare Management (cloudflare.sh)
+Tools for managing Cloudflare zone settings:
+
+**Optimisation:**
+- `cf-opt`: Apply performance and security optimisations (interactive)
+- `cf-opt DOMAIN`: Non-interactive batch mode
+- `cf-opt DOMAIN SITE_PATH`: Batch mode with logging
+
+**Verification:**
+- `cf-check`: Check current Cloudflare settings and test cache headers
+- `cf-help`: Show detailed help and usage examples
+
+**What cf-opt configures:**
+- Performance: HTTP/3, Early Hints, Tiered Cache, Auto Minify, 0-RTT
+- Security: SSL Full (Strict), TLS 1.3, Min TLS 1.2, HTTPS Rewrites
+- Cache Rules: Static assets, CSS/JS/fonts, images, WooCommerce bypass
+
+**Configuration:**
+- Requires `CF_API_TOKEN` in `.dotfiles-config`
+- Token needs: Zone Settings, Cache Rules, Cache Purge, Argo Smart Routing permissions
 
 ### WordPress Core Shortcuts (wp-core.sh)
 Essential WP-CLI aliases and shortcuts:
@@ -282,6 +304,23 @@ cd ~/Sites/yoursite/wp-content/themes/yoursite
 depto -auto -target staging
 ```
 
+### Cloudflare Management
+Optimise a Cloudflare zone interactively:
+```bash
+cf-opt  # Prompts for zone selection and confirmations
+```
+
+Optimise in batch mode (non-interactive):
+```bash
+cf-opt example.com.au                    # No logging
+cf-opt example.com.au ~/Sites/example    # With logging to site directory
+```
+
+Check current settings:
+```bash
+cf-check  # View settings and test cache headers
+```
+
 ### Git Workflow
 Create new feature branch:
 ```bash
@@ -302,16 +341,18 @@ listcmds  # Display comprehensive list of all functions and aliases
 - WP-CLI
 - Git
 - SSH access to deployment servers
+- jq (for Cloudflare functions: `brew install jq`)
 
 ## File Structure After Installation
 
 ```
 ~/
-├── .shell-functions -> ~/dotfiles/shell/     # Symlink to shell functions  
+├── .shell-functions -> ~/dotfiles/shell/     # Symlink to shell functions
 └── dotfiles/
     ├── shell/
-    │   ├── config.sh                         # Central configuration system
-    │   ├── deployment.sh                     # Theme deployment functions
+    │   ├── cloudflare.sh                    # Cloudflare zone management
+    │   ├── config.sh                        # Central configuration system
+    │   ├── deployment.sh                    # Theme deployment functions
     │   ├── git.sh                           # Git utilities
     │   ├── utils.sh                         # System utilities
     │   ├── wp-core.sh                       # WordPress shortcuts
