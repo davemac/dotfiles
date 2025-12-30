@@ -226,6 +226,13 @@ listcmds() {
     echo -e "${GREEN}wpdli${NC}            Alias for wp_download_images"
     echo ""
 
+    # Cloudflare Management
+    echo -e "${BOLD}${YELLOW}Cloudflare Management (cloudflare.sh)${NC}"
+    echo -e "${GREEN}cf-opt${NC}           Apply Cloudflare performance and security optimisations"
+    echo -e "${GREEN}cf-check${NC}         Check current Cloudflare settings for a zone"
+    echo -e "${GREEN}cf-help${NC}          Show Cloudflare commands help"
+    echo ""
+
     # Help & Documentation
     echo -e "${BOLD}${YELLOW}Help & Documentation${NC}"
     echo -e "${GREEN}listcmds${NC}         Display this command list"
