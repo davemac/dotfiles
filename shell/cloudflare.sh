@@ -10,12 +10,15 @@
 #
 # Main Functions:
 # * cf-opt                       - Apply performance and security optimisations
+# * cf-opt DOMAIN                - Batch mode (non-interactive)
+# * cf-opt DOMAIN SITE_PATH      - Batch mode with logging
 # * cf-check                     - Check current Cloudflare settings
 # * cf-help                      - Show available Cloudflare commands
 #
 # Configuration:
 # * API Token: Stored in .dotfiles-config as CF_API_TOKEN (or prompted)
 # * Zone Selection: Lists all zones, select by number or domain name
+# * Batch Mode: Pass domain as argument to skip all prompts
 # * Token requires: Zone Settings, Cache Rules, Cache Purge, Argo Smart Routing
 #
 # Logging:
@@ -53,10 +56,36 @@ _cf_auto_detect_site_path() {
 # -----------------------------------------------------------------------------
 # Helper: Get site path for logging
 # Prompts user or auto-detects from current directory
+# Usage: _cf_get_site_path [BATCH_MODE] [SITE_PATH]
+#   BATCH_MODE: "batch" to skip prompts
+#   SITE_PATH: Optional explicit path (batch mode only)
 # -----------------------------------------------------------------------------
 _cf_get_site_path() {
+    local batch_mode="$1"
+    local explicit_path="$2"
     local auto_path=$(_cf_auto_detect_site_path)
 
+    if [[ "$batch_mode" == "batch" ]]; then
+        # Batch mode: use explicit path, auto-detect, or skip
+        if [[ -n "$explicit_path" ]]; then
+            CF_SITE_PATH="${explicit_path/#\~/$HOME}"
+            if [[ ! -d "$CF_SITE_PATH" ]]; then
+                echo "Warning: Directory does not exist: $CF_SITE_PATH (skipping logging)"
+                CF_SITE_PATH=""
+            else
+                echo "Using site path: $CF_SITE_PATH"
+            fi
+        elif [[ -n "$auto_path" ]]; then
+            CF_SITE_PATH="$auto_path"
+            echo "Auto-detected site path: $CF_SITE_PATH"
+        else
+            echo "No site path provided (skipping logging)"
+            CF_SITE_PATH=""
+        fi
+        return 0
+    fi
+
+    # Interactive mode
     if [[ -n "$auto_path" ]]; then
         echo "Detected site directory: $auto_path"
         echo "Use this for logging? [Y/n]"
@@ -104,11 +133,13 @@ _cf_log() {
 
 # -----------------------------------------------------------------------------
 # Helper: Test cache headers for a zone
-# Usage: _cf_test_cache_headers ZONE_ID API_TOKEN
+# Usage: _cf_test_cache_headers ZONE_ID API_TOKEN [BATCH_MODE]
+#   BATCH_MODE: "batch" to skip prompts and use domain homepage
 # -----------------------------------------------------------------------------
 _cf_test_cache_headers() {
     local zone_id="$1"
     local api_token="$2"
+    local batch_mode="$3"
 
     # Track results for analysis
     local page_status1=""
@@ -121,10 +152,12 @@ _cf_test_cache_headers() {
     local zone_name=$(echo "$zone_info" | jq -r '.result.name')
     local test_url="https://$zone_name"
 
-    echo "Enter URL to test (press Enter for $test_url):"
-    read -r custom_url
-    if [[ -n "$custom_url" ]]; then
-        test_url="$custom_url"
+    if [[ "$batch_mode" != "batch" ]]; then
+        echo "Enter URL to test (press Enter for $test_url):"
+        read -r custom_url
+        if [[ -n "$custom_url" ]]; then
+            test_url="$custom_url"
+        fi
     fi
 
     _cf_log ""
@@ -406,7 +439,75 @@ _cf_get_credentials() {
 }
 
 # -----------------------------------------------------------------------------
+# Batch mode: Get credentials using domain name (non-interactive)
+# Usage: _cf_get_credentials_batch DOMAIN_NAME
+# Returns 0 on success, sets CF_ZONE_ID and CF_API_TOKEN
+# -----------------------------------------------------------------------------
+_cf_get_credentials_batch() {
+    local domain_name="$1"
+
+    # Load config to get API token
+    load_dotfiles_config 2>/dev/null || true
+
+    if [[ -z "$CF_API_TOKEN" ]]; then
+        echo "Error: CF_API_TOKEN not found in .dotfiles-config"
+        echo "Add it with: echo 'CF_API_TOKEN=\"your-token\"' >> ~/.dotfiles-config"
+        return 1
+    fi
+
+    echo "Using API token from .dotfiles-config"
+
+    # Fetch list of zones
+    echo "Fetching zones..."
+    local zones_result=$(curl -s -X GET \
+        "https://api.cloudflare.com/client/v4/zones?per_page=50" \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        -H "Content-Type: application/json")
+
+    if ! echo "$zones_result" | jq -e '.success == true' > /dev/null 2>&1; then
+        local error_msg=$(echo "$zones_result" | jq -r '.errors[0].message // "Unknown error"')
+        echo "Error: Failed to fetch zones - $error_msg"
+        return 1
+    fi
+
+    # Find zone by exact match first, then partial match
+    CF_ZONE_ID=$(echo "$zones_result" | jq -r --arg domain "$domain_name" \
+        '.result[] | select(.name == $domain) | .id // empty')
+
+    if [[ -z "$CF_ZONE_ID" ]]; then
+        # Try partial match
+        CF_ZONE_ID=$(echo "$zones_result" | jq -r --arg domain "$domain_name" \
+            '.result[] | select(.name | contains($domain)) | .id' | head -1)
+    fi
+
+    if [[ -z "$CF_ZONE_ID" ]]; then
+        echo "Error: Zone not found for domain: $domain_name"
+        echo "Available zones:"
+        echo "$zones_result" | jq -r '.result[] | "  - \(.name)"'
+        return 1
+    fi
+
+    local zone_name=$(echo "$zones_result" | jq -r --arg id "$CF_ZONE_ID" \
+        '.result[] | select(.id == $id) | .name')
+    echo "Selected zone: $zone_name"
+    echo ""
+
+    return 0
+}
+
+# -----------------------------------------------------------------------------
 # cf-opt: Apply Cloudflare performance and security optimisations
+#
+# Usage:
+#   cf-opt                           # Interactive mode
+#   cf-opt DOMAIN                    # Batch mode (non-interactive)
+#   cf-opt DOMAIN SITE_PATH          # Batch mode with logging
+#
+# Batch mode auto-defaults:
+#   - Proceed confirmation → Yes
+#   - Purge cache → Yes
+#   - Test cache headers → Yes
+#   - Test URL → Domain homepage
 #
 # Configures:
 # - Performance: HTTP/3, 0-RTT, Early Hints, Auto Minify, Always Online
@@ -421,48 +522,67 @@ cf-opt() {
     CF_LOG_FILE=""
     CF_SITE_PATH=""
 
-    echo "Cloudflare Performance Optimisation"
-    echo "===================================="
-    echo ""
-    echo "This script will apply the following settings to your Cloudflare zone:"
-    echo ""
-    echo "PERFORMANCE SETTINGS:"
-    echo "  - HTTP/3 (QUIC)              -> ON"
-    echo "  - 0-RTT Connection Resumption -> ON (Pro plan required)"
-    echo "  - Early Hints                -> ON"
-    echo "  - Auto Minify (CSS/HTML/JS)  -> ON"
-    echo "  - Always Online              -> ON"
-    echo "  - WebSockets                 -> ON"
-    echo "  - Opportunistic Encryption   -> ON"
-    echo "  - Browser Cache TTL          -> Respect existing headers"
-    echo "  - Tiered Cache               -> ON (improves TTFB)"
-    echo ""
-    echo "SECURITY SETTINGS:"
-    echo "  - SSL Mode                   -> Full (Strict)"
-    echo "  - TLS 1.3                    -> ON"
-    echo "  - Minimum TLS Version        -> 1.2"
-    echo "  - Automatic HTTPS Rewrites   -> ON"
-    echo ""
-    echo "CACHE RULES (will create/update):"
-    echo "  - Static assets (uploads/themes/includes) -> 1 month edge, 1 week browser"
-    echo "  - CSS, JS, fonts                          -> 1 month edge, 1 week browser"
-    echo "  - Images (jpg/png/gif/webp/avif/svg/ico)  -> 1 month edge & browser"
-    echo "  - WooCommerce (cart/checkout/my-account)  -> Bypass cache"
-    echo ""
-    echo "===================================="
-    echo ""
-    echo "Do you want to proceed? [y/N]"
-    read -r response
+    # Check for batch mode (domain passed as argument)
+    local batch_mode=""
+    local batch_domain=""
+    local batch_site_path=""
 
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-        echo "Cancelled."
-        return 0
+    if [[ -n "$1" ]]; then
+        batch_mode="batch"
+        batch_domain="$1"
+        batch_site_path="$2"
+        echo "Cloudflare Performance Optimisation (Batch Mode)"
+        echo "================================================="
+        echo ""
+        echo "Domain: $batch_domain"
+        if [[ -n "$batch_site_path" ]]; then
+            echo "Site path: $batch_site_path"
+        fi
+        echo ""
+    else
+        echo "Cloudflare Performance Optimisation"
+        echo "===================================="
+        echo ""
+        echo "This script will apply the following settings to your Cloudflare zone:"
+        echo ""
+        echo "PERFORMANCE SETTINGS:"
+        echo "  - HTTP/3 (QUIC)              -> ON"
+        echo "  - 0-RTT Connection Resumption -> ON (Pro plan required)"
+        echo "  - Early Hints                -> ON"
+        echo "  - Auto Minify (CSS/HTML/JS)  -> ON"
+        echo "  - Always Online              -> ON"
+        echo "  - WebSockets                 -> ON"
+        echo "  - Opportunistic Encryption   -> ON"
+        echo "  - Browser Cache TTL          -> Respect existing headers"
+        echo "  - Tiered Cache               -> ON (improves TTFB)"
+        echo ""
+        echo "SECURITY SETTINGS:"
+        echo "  - SSL Mode                   -> Full (Strict)"
+        echo "  - TLS 1.3                    -> ON"
+        echo "  - Minimum TLS Version        -> 1.2"
+        echo "  - Automatic HTTPS Rewrites   -> ON"
+        echo ""
+        echo "CACHE RULES (will create/update):"
+        echo "  - Static assets (uploads/themes/includes) -> 1 month edge, 1 week browser"
+        echo "  - CSS, JS, fonts                          -> 1 month edge, 1 week browser"
+        echo "  - Images (jpg/png/gif/webp/avif/svg/ico)  -> 1 month edge & browser"
+        echo "  - WooCommerce (cart/checkout/my-account)  -> Bypass cache"
+        echo ""
+        echo "===================================="
+        echo ""
+        echo "Do you want to proceed? [y/N]"
+        read -r response
+
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            echo "Cancelled."
+            return 0
+        fi
+
+        echo ""
     fi
 
-    echo ""
-
     # Get site path for logging
-    if ! _cf_get_site_path; then
+    if ! _cf_get_site_path "$batch_mode" "$batch_site_path"; then
         return 1
     fi
 
@@ -482,8 +602,14 @@ cf-opt() {
     fi
 
     # Get credentials
-    if ! _cf_get_credentials; then
-        return 1
+    if [[ "$batch_mode" == "batch" ]]; then
+        if ! _cf_get_credentials_batch "$batch_domain"; then
+            return 1
+        fi
+    else
+        if ! _cf_get_credentials; then
+            return 1
+        fi
     fi
 
     local zone_id="$CF_ZONE_ID"
@@ -766,11 +892,19 @@ cf-opt() {
     # -------------------------------------------------------------------------
     # 5. PURGE CACHE
     # -------------------------------------------------------------------------
-    echo ""
-    echo "Purge Cloudflare cache now? [Y/n]"
-    read -r purge_response
+    local do_purge="n"
+    if [[ "$batch_mode" == "batch" ]]; then
+        do_purge="y"
+    else
+        echo ""
+        echo "Purge Cloudflare cache now? [Y/n]"
+        read -r purge_response
+        if [[ ! "$purge_response" =~ ^[Nn]$ ]]; then
+            do_purge="y"
+        fi
+    fi
 
-    if [[ ! "$purge_response" =~ ^[Nn]$ ]]; then
+    if [[ "$do_purge" == "y" ]]; then
         _cf_log "Purging cache..."
         local purge_result=$(_cf_api POST "/zones/$zone_id/purge_cache" '{"purge_everything": true}' "$zone_id" "$api_token")
         local purge_success=$(echo "$purge_result" | jq -r '.success')
@@ -787,15 +921,23 @@ cf-opt() {
     # -------------------------------------------------------------------------
     # 6. VERIFY CACHING WITH CURL
     # -------------------------------------------------------------------------
-    echo ""
-    echo "Test cache headers now? [Y/n]"
-    read -r test_response
+    local do_test="n"
+    if [[ "$batch_mode" == "batch" ]]; then
+        do_test="y"
+    else
+        echo ""
+        echo "Test cache headers now? [Y/n]"
+        read -r test_response
+        if [[ ! "$test_response" =~ ^[Nn]$ ]]; then
+            do_test="y"
+        fi
+    fi
 
-    if [[ ! "$test_response" =~ ^[Nn]$ ]]; then
+    if [[ "$do_test" == "y" ]]; then
         # Wait a moment for cache purge to propagate
         echo "  Waiting 2 seconds for cache purge to propagate..."
         sleep 2
-        _cf_test_cache_headers "$zone_id" "$api_token"
+        _cf_test_cache_headers "$zone_id" "$api_token" "$batch_mode"
     fi
 
     _cf_log ""
@@ -909,22 +1051,37 @@ Cloudflare Management Commands
 ==============================
 
 Commands:
-  cf-opt      Apply performance and security optimisations to a zone
-  cf-check    Check current settings and test cache headers
-  cf-help     Show this help message
+  cf-opt                   Interactive mode - apply optimisations with prompts
+  cf-opt DOMAIN            Batch mode - non-interactive, uses defaults
+  cf-opt DOMAIN SITE_PATH  Batch mode with logging to specified path
+  cf-check                 Check current settings and test cache headers
+  cf-help                  Show this help message
+
+Batch Mode (cf-opt only):
+  Pass a domain name to skip all prompts and use defaults:
+    cf-opt example.com.au                    # No logging
+    cf-opt example.com.au ~/Sites/example    # With logging
+
+  Batch mode auto-defaults:
+    - Proceed confirmation → Yes
+    - Purge cache → Yes
+    - Test cache headers → Yes (uses domain homepage)
+    - Site path → Auto-detect from current directory, or use provided path
 
 Configuration:
   API Token is loaded from .dotfiles-config (CF_API_TOKEN).
-  If not configured, you'll be prompted to enter it.
+  If not configured, you'll be prompted to enter it (interactive mode only).
 
   To add your token to config:
     echo 'CF_API_TOKEN="your-token-here"' >> ~/.dotfiles-config
 
-Zone Selection:
-  Both commands list all available zones and let you select by:
+Zone Selection (interactive mode):
+  Lists all available zones and lets you select by:
   - Number (e.g., "2")
   - Full domain (e.g., "example.com.au")
   - Partial match (e.g., "example")
+
+  In batch mode, the domain is matched automatically.
 
 Logging (cf-opt only):
   Writes a timestamped log to the site root directory:
