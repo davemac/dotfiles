@@ -15,7 +15,7 @@
 # • pulldb                     - Export production database to timestamped local file (alias)
 #
 # User Management:
-# • dmcweb [user]              - Update user password to configured dev password (defaults to admin)
+# • dmcweb [user]              - Update user password to configured dev password (defaults to first admin)
 #
 # Database Analysis:
 # • check-featured-image       - Find posts missing featured images
@@ -578,10 +578,16 @@ check-featured-image() {
     wp db query "SELECT ID FROM $(wp db prefix)posts WHERE post_type='post' AND post_status='publish' AND ID NOT IN (SELECT post_id FROM $(wp db prefix)postmeta WHERE meta_key='_thumbnail_id');" --skip-column-names
 }
 
-# Update user password to configured dev password. Defaults to 'admin' user ID.
+# Update user password to configured dev password.
+# Defaults to the first administrator user found, falls back to user ID 1.
+# Usage: dmcweb [user_login_or_id]
 dmcweb() {
     load_dotfiles_config 2>/dev/null || true
-    local user_id=${1:-admin}
+    local user_id="$1"
+    if [[ -z "$user_id" ]]; then
+        user_id=$(wp user list --role=administrator --field=ID --format=csv 2>/dev/null | head -n1)
+        user_id=${user_id:-1}
+    fi
     wp user update "$user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}"
 }
 
