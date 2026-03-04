@@ -93,16 +93,17 @@ PHP
    ssh $current-s "mkdir -p ~/www/wp-content"
 
    # Rsync theme and mu-plugins, including vendor directories
-   rsync --exclude-from "rsync-exclude.txt" wp-content/themes/ $current-s:~/www/wp-content/themes/
-   rsync --exclude-from "rsync-exclude.txt" wp-content/mu-plugins/ $current-s:~/www/wp-content/mu-plugins/
-   rsync --exclude-from "rsync-exclude.txt" wp-content/plugins/ $current-s:~/www/wp-content/plugins/
+   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/themes/ $current-s:~/www/wp-content/themes/
+   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/mu-plugins/ $current-s:~/www/wp-content/mu-plugins/
+   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/plugins/ $current-s:~/www/wp-content/plugins/
+   rsync -avzW --progress wp-content/uploads/ $current-s:~/www/wp-content/uploads/
 
     # rsync --exclude-from "rsync-exclude.txt" wp-content $current-s:~/www
 
    wp @stage plugin deactivate query-monitor acf-theme-code-pro wp-seopress
    wp @stage plugin delete query-monitor acf-theme-code-pro wp-seopress
    wp @stage option update blog_public 0
-   wp rewrite flush
+   wp @stage rewrite flush
 
    ssh $current-s "cd ~/www/wp-content && find . -type d -exec chmod 755 {} \; && find . -type f -exec chmod 644 {} \;"
 }
@@ -141,6 +142,7 @@ PHP
 
    wp @prod plugin deactivate query-monitor acf-theme-code-pro
    wp @prod plugin delete query-monitor acf-theme-code-pro
+   wp @prod rewrite flush
 }
 
 # Deploys the current theme to a specified remote server, either staging or production.
@@ -200,9 +202,9 @@ depto() {
        echo "$theme is the theme"
    fi
 
-   rsync dist *.php blocks acf-json lib page-templates post-types taxonomies template-parts wp-cli woocommerce "$sshalias":~/www/wp-content/themes/"$theme"
-   rsync source/php "$sshalias":~/www/wp-content/themes/"$theme"/source
-   rsync source/images "$sshalias":~/www/wp-content/themes/"$theme"/source
-   rsync vendor/autoload.php "$sshalias":~/www/wp-content/themes/"$theme"/vendor
-   rsync vendor/composer "$sshalias":~/www/wp-content/themes/"$theme"/vendor
+   rsync -avzW --progress dist *.php blocks acf-json lib page-templates post-types taxonomies template-parts wp-cli woocommerce "$sshalias":~/www/wp-content/themes/"$theme"
+   rsync -avzW --progress source/php "$sshalias":~/www/wp-content/themes/"$theme"/source
+   rsync -avzW --progress source/images "$sshalias":~/www/wp-content/themes/"$theme"/source
+   rsync -avzW --progress vendor/autoload.php "$sshalias":~/www/wp-content/themes/"$theme"/vendor
+   rsync -avzW --progress vendor/composer "$sshalias":~/www/wp-content/themes/"$theme"/vendor
 }
