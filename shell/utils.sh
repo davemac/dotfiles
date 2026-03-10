@@ -133,7 +133,7 @@ listcmds() {
 
     # Database Operations
     echo -e "${BOLD}${YELLOW}Database Operations (wp-db.sh)${NC}"
-    echo -e "${GREEN}pullprod${NC}         Pull production database to local environment"
+    echo -e "${GREEN}pullprod${NC}         Pull production database to local environment (--yes to skip prompt)"
     echo -e "${GREEN}pullstage${NC}        Pull staging database to local"
     echo -e "${GREEN}pulltest${NC}         Pull testing database to local"
     echo -e "${GREEN}pushstage${NC}        Push local database to staging (--dry-run available)"

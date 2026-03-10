@@ -70,12 +70,23 @@
 #   ~/Sites/sitename/wp-content/themes/sitename/  (Theme directory)
 #
 pullprod() {
-    # Handle --help flag
+    # Handle flags
+    local SKIP_CONFIRM=false
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --yes|-y) SKIP_CONFIRM=true ;;
+            --help|-h) ;;
+            *) echo "Unknown option: $arg"; return 1 ;;
+        esac
+    done
+
     if [[ "$1" == "--help" || "$1" == "-h" ]]; then
         echo "WordPress Production Database Sync Tool"
         echo ""
         echo "USAGE:"
         echo "  pullprod                            # Sync production database to local"
+        echo "  pullprod --yes (-y)                 # Skip confirmation prompt"
         echo "  pullprod --help                     # Show this help message"
         echo ""
         echo "DESCRIPTION:"
@@ -103,7 +114,7 @@ pullprod() {
         echo "  • Creates backup before importing"
         echo "  • Validates production connection"
         echo "  • Restores backup on failure"
-        echo "  • User confirmation required"
+        echo "  • User confirmation required (skip with --yes/-y)"
         echo ""
         echo "WHAT CHANGES:"
         echo "  • Local database replaced with production data"
@@ -210,17 +221,21 @@ pullprod() {
     message "Production URL: $PROD_URL"
 
     # User confirmation to prevent accidental execution
-    echo ""
-    warning "You are about to reset your local database and import the production database."
-    warning "This will overwrite all local data for site: $SITE_NAME"
-    warning "Production URL: $PROD_URL"
-    warning "Local URL: $LOCAL_URL"
-    echo ""
-    read "CONFIRM?Are you sure you want to continue? (y/n): "
+    if [[ "$SKIP_CONFIRM" != true ]]; then
+        echo ""
+        warning "You are about to reset your local database and import the production database."
+        warning "This will overwrite all local data for site: $SITE_NAME"
+        warning "Production URL: $PROD_URL"
+        warning "Local URL: $LOCAL_URL"
+        echo ""
+        read "CONFIRM?Are you sure you want to continue? (y/n): "
 
-    if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
-        message "Operation cancelled by user"
-        return 0
+        if [[ $CONFIRM != "y" && $CONFIRM != "Y" ]]; then
+            message "Operation cancelled by user"
+            return 0
+        fi
+    else
+        message "Skipping confirmation (--yes flag provided)"
     fi
 
     # Database operation files
