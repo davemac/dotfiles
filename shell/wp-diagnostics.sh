@@ -92,7 +92,7 @@ wp_plugin_diags() {
         echo ""
         echo "SKIP LIST:"
         echo "  By default skips: wordfence, akismet, updraftplus"
-        echo "  Configure via ~/.dotfiles-config (future feature)"
+        echo "  Configure via: dotfiles_config --edit"
         echo ""
         return 0
     fi

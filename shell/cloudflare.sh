@@ -451,7 +451,7 @@ _cf_get_credentials_batch() {
 
     if [[ -z "$CF_API_TOKEN" ]]; then
         echo "Error: CF_API_TOKEN not found in .dotfiles-config"
-        echo "Add it with: echo 'CF_API_TOKEN=\"your-token\"' >> ~/.dotfiles-config"
+        echo "Add it with: dotfiles_config --edit"
         return 1
     fi
 
@@ -1073,7 +1073,7 @@ Configuration:
   If not configured, you'll be prompted to enter it (interactive mode only).
 
   To add your token to config:
-    echo 'CF_API_TOKEN="your-token-here"' >> ~/.dotfiles-config
+    dotfiles_config --edit
 
 Zone Selection (interactive mode):
   Lists all available zones and lets you select by:

@@ -79,7 +79,7 @@ fi
 load_dotfiles_config() {
     # DEFAULT VALUES (safe for public repo):
     PLUGIN_SKIP_LIST="wordfence akismet updraftplus"          # Plugins to skip in wp_plugin_diags
-    WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l pelican-l pricing-l toshiba-l"  # SSH hosts for update-wc-db  
+    WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l hisensenz-l pelican-l pricing-l puppets-l toshiba-l"  # SSH hosts for update-wc-db
     UPLOAD_EXCLUDES="*.pdf *.docx *.zip"                      # File patterns to exclude in getups/pushups
     SSH_TIMEOUT="10"                                           # SSH connection timeout in seconds
     DEFAULT_MEMORY_LIMIT="512M"                               # WordPress memory limit for wp_db_optimise
@@ -114,7 +114,7 @@ create_default_config() {
 
 # WooCommerce Update Hosts Configuration
 # List of SSH host aliases for update-wc-db function
-# WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l pelican-l pricing-l toshiba-l"
+# WC_HOSTS="aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l hisensenz-l pelican-l pricing-l puppets-l toshiba-l"
 
 # Upload Sync Configuration
 # File patterns to exclude during upload sync (getups/pushups)
