@@ -48,16 +48,16 @@
 # The .dotfiles-config file is stored in the dotfiles repo root directory.
 # Try multiple methods to find the script directory, with fallback to $HOME/dotfiles
 if [[ -n "${(%):-%x}" ]] 2>/dev/null; then
-    # zsh: use %x
-    _SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+    # zsh: use %x with :A modifier to resolve symlinks
+    _SCRIPT_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd -P)"
 elif [[ -n "${BASH_SOURCE[0]}" ]]; then
-    # bash: use BASH_SOURCE
-    _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    # bash: use BASH_SOURCE with readlink to resolve symlinks
+    _SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd -P)"
 else
     # Fallback: assume standard location
     _SCRIPT_DIR="$HOME/dotfiles/shell"
 fi
-DOTFILES_CONFIG_FILE="$(cd "$_SCRIPT_DIR/.." 2>/dev/null && pwd)/.dotfiles-config"
+DOTFILES_CONFIG_FILE="$(cd "$_SCRIPT_DIR/.." 2>/dev/null && pwd -P)/.dotfiles-config"
 
 # If config file doesn't exist at detected location, try standard $HOME/dotfiles location
 if [[ ! -f "$DOTFILES_CONFIG_FILE" ]] && [[ -f "$HOME/dotfiles/.dotfiles-config" ]]; then

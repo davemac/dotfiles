@@ -623,7 +623,7 @@ dmcweb() {
     
     # Load configuration for WooCommerce hosts
     load_dotfiles_config 2>/dev/null || true
-    local hosts_string="${WC_HOSTS:-aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l hisense-l pelican-l pricing-l rippercorp-l advocate-l toshiba-l}"
+    local hosts_string="${WC_HOSTS:-aquacorp-l aussie-l registrars-l cem-l colac-l dpm-l hisensenz-l pelican-l pricing-l puppets-l toshiba-l}"
     # Convert space-separated string to array
     local -a hosts
     read -A hosts <<< "$hosts_string"
