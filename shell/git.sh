@@ -13,7 +13,6 @@
 # • gca                        - Git commit all (alias: git commit -a)
 # • gc                         - Git commit (alias: git commit)
 # • gl                         - Formatted git log with graph, dates, and decoration
-# • glcss                      - Git log for CSS/Sass files from the last year with line numbers
 #
 # Branch Management:
 # • new_branch [options] <ticket_id> <title> - Create new branch from ticket ID and title
@@ -38,7 +37,7 @@ alias ga="git add "
 alias gca="git commit -a "
 alias gc="git commit"
 alias gl="git log --graph --abbrev-commit --decorate --date=relative --format=format:'%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)' --all"
-alias glcss="git log --name-only --since='365 days' | sort -u | awk '/\.(le|c|sa|sc)ss$/{print}' | nl"
+
 
 # Create a new Git branch from a ticket ID and title
 new_branch() {

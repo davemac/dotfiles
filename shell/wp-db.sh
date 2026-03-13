@@ -9,16 +9,12 @@
 #
 # Database Sync Functions:
 # • pullprod                   - Pull production database to local environment (full sync)
-# • pullstage                  - Pull staging database to local environment  
-# • pulltest                   - Pull testing database to local environment
+# • pullstage                  - Pull staging database to local environment
 # • pushstage                  - Push local database to staging environment
 # • pulldb                     - Export production database to timestamped local file (alias)
 #
 # User Management:
 # • dmcweb [user]              - Update user password to configured dev password (defaults to first admin)
-#
-# Database Analysis:
-# • check-featured-image       - Find posts missing featured images
 #
 # Multi-Host Operations:
 # • update-wc-db               - Update WooCommerce database on multiple configured hosts
@@ -49,27 +45,22 @@
 #
 # ============================================================================
 
-# WordPress Database Sync Function
+# Internal helper: Pull a remote WordPress database to local environment.
 #
-# pullprod() - Syncs a WordPress database from production to local environment
+# Used by pullprod, pullstage, and pulltest. Provides consistent error handling,
+# backup/restore on failure, confirmation prompts, and plugin management across
+# all environments.
 #
-# This function performs the following operations:
-# 1. Backs up the local database
-# 2. Downloads the production database
-# 3. Updates URLs to match local environment
-# 4. Updates WordPress core, plugins, and themes
-# 5. Configures plugins for local development
+# Arguments:
+#   $1 - WP-CLI alias (@prod, @stage, @test)
+#   $2 - Environment label (production, staging, testing)
+#   $@ - Additional flags (--yes/-y to skip confirmation)
 #
-# Usage:
-#   Run from either the WordPress root directory or theme directory
-#   The site name is automatically detected from the directory structure
-#   Requires WP-CLI and a configured @prod alias
-#
-# Example directory structures:
-#   ~/Sites/sitename/              (WordPress root)
-#   ~/Sites/sitename/wp-content/themes/sitename/  (Theme directory)
-#
-pullprod() {
+_pull_db() {
+    local wp_alias="$1"
+    local env_label="$2"
+    shift 2
+
     # Handle flags
     local SKIP_CONFIRM=false
     local arg
@@ -81,89 +72,63 @@ pullprod() {
         esac
     done
 
-    if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-        echo "WordPress Production Database Sync Tool"
-        echo ""
-        echo "USAGE:"
-        echo "  pullprod                            # Sync production database to local"
-        echo "  pullprod --yes (-y)                 # Skip confirmation prompt"
-        echo "  pullprod --help                     # Show this help message"
-        echo ""
-        echo "DESCRIPTION:"
-        echo "  Syncs a WordPress database from production to local environment."
-        echo "  Automatically detects site name from directory structure."
-        echo ""
-        echo "REQUIREMENTS:"
-        echo "  • wp-cli installed and configured"
-        echo "  • @prod alias configured in ~/.wp-cli/config.yml"
-        echo "  • Run from WordPress root OR theme directory"
-        echo "  • SSH access to production server"
-        echo ""
-        echo "OPERATIONS:"
-        echo "  1. Backs up the local database"
-        echo "  2. Downloads the production database"
-        echo "  3. Updates URLs to match local environment"
-        echo "  4. Updates WordPress core, plugins, and themes"
-        echo "  5. Configures plugins for local development"
-        echo ""
-        echo "DIRECTORY STRUCTURES:"
-        echo "  ~/Sites/sitename/                           # WordPress root"
-        echo "  ~/Sites/sitename/wp-content/themes/sitename/ # Theme directory"
-        echo ""
-        echo "SAFETY FEATURES:"
-        echo "  • Creates backup before importing"
-        echo "  • Validates production connection"
-        echo "  • Restores backup on failure"
-        echo "  • User confirmation required (skip with --yes/-y)"
-        echo ""
-        echo "WHAT CHANGES:"
-        echo "  • Local database replaced with production data"
-        echo "  • URLs updated to https://sitename.localhost"
-        echo "  • Admin password set to configured dev password"
-        echo "  • Development plugins activated"
-        echo "  • Production-only plugins deactivated"
-        echo ""
-        return 0
-    fi
+    # Show help if requested (caller handles this, but guard here too)
+    for arg in "$@"; do
+        if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+            echo "WordPress ${env_label^} Database Sync Tool"
+            echo ""
+            echo "USAGE:"
+            echo "  pull${env_label}                            # Sync ${env_label} database to local"
+            echo "  pull${env_label} --yes (-y)                 # Skip confirmation prompt"
+            echo "  pull${env_label} --help                     # Show this help message"
+            echo ""
+            echo "DESCRIPTION:"
+            echo "  Syncs a WordPress database from ${env_label} to local environment."
+            echo "  Automatically detects site name from directory structure."
+            echo ""
+            echo "REQUIREMENTS:"
+            echo "  - wp-cli installed and configured"
+            echo "  - ${wp_alias} alias configured in ~/.wp-cli/config.yml"
+            echo "  - Run from WordPress root OR theme directory"
+            echo "  - SSH access to ${env_label} server"
+            echo ""
+            echo "SAFETY FEATURES:"
+            echo "  - Creates backup before importing"
+            echo "  - Validates ${env_label} connection"
+            echo "  - Restores backup on failure"
+            echo "  - User confirmation required (skip with --yes/-y)"
+            echo ""
+            return 0
+        fi
+    done
 
-    # Define colors for better readability
+    # Define colours for readability
     local GREEN='\033[0;32m'
     local YELLOW='\033[1;33m'
     local RED='\033[0;31m'
-    local NC='\033[0m' # No Color
+    local NC='\033[0m'
 
-    # Helper functions for consistent message formatting
-    message() {
-        echo -e "${GREEN}==>${NC} $1"
-    }
+    message() { echo -e "${GREEN}==>${NC} $1"; }
+    warning() { echo -e "${YELLOW}Warning:${NC} $1"; }
+    error()   { echo -e "${RED}Error:${NC} $1"; return 1; }
 
-    warning() {
-        echo -e "${YELLOW}Warning:${NC} $1"
-    }
-
-    error() {
-        echo -e "${RED}Error:${NC} $1"
-        return 1
-    }
+    local START=$(date +%s)
 
     # Prerequisite checks
-    # Verify WP-CLI is installed and @prod alias is configured
     if ! command -v wp > /dev/null 2>&1; then
         error "WP-CLI is not installed. Please install it first: https://wp-cli.org/"
         return 1
     fi
 
-    if ! wp cli alias get @prod > /dev/null 2>&1; then
-        error "WP-CLI @prod alias not configured. Please configure it in ~/.wp-cli/config.yml"
+    if ! wp cli alias get "$wp_alias" > /dev/null 2>&1; then
+        error "WP-CLI ${wp_alias} alias not configured. Please configure it in ~/.wp-cli/config.yml"
         return 1
     fi
 
     # Directory and site name detection
-    # Automatically determines site name and root directory from current path
     local CURRENT_DIR=$(pwd)
-    local SITE_NAME=$(basename $(echo "$CURRENT_DIR" | sed -E "s|/wp-content/themes/.*||"))
+    local SITE_NAME=$(basename "$(echo "$CURRENT_DIR" | sed -E "s|/wp-content/themes/.*||")")
 
-    # Validation checks for site name
     if [ -z "$SITE_NAME" ]; then
         error "Could not determine site name from directory structure"
         return 1
@@ -174,58 +139,52 @@ pullprod() {
         return 1
     fi
 
-    # Site root detection and validation
-    # Works from either WordPress root or theme directory
+    # Site root detection — works from either WordPress root or theme directory
     local SITE_ROOT
     if [[ "$CURRENT_DIR" == *"/wp-content/themes/"* ]]; then
-        # We're in the theme directory
         SITE_ROOT=$(echo "$CURRENT_DIR" | sed -E "s|/wp-content/themes/.*||")
-        cd "$SITE_ROOT" || error "Failed to change to site root directory"
+        cd "$SITE_ROOT" || { error "Failed to change to site root directory"; return 1; }
         message "Changed to site root: $SITE_ROOT"
     else
-        # Assume we're already in the site root
         SITE_ROOT="$CURRENT_DIR"
     fi
 
-    # Verify this is actually a WordPress installation
     if [ ! -f "$SITE_ROOT/wp-config.php" ]; then
         error "WordPress installation not found in $SITE_ROOT"
         return 1
     fi
 
-    # URL configuration
     local LOCAL_URL="https://${SITE_NAME}.localhost"
     message "Local URL: $LOCAL_URL"
 
-    # Pre-check: Test SSH connectivity to production
-    message "Testing connectivity to production server..."
-    if ! wp @prod core is-installed --quiet 2>/dev/null; then
-        error "Cannot connect to production server. Please check:"
-        echo "  • SSH connection to production server"
-        echo "  • @prod alias configuration in ~/.wp-cli/config.yml"
-        echo "  • wp-cli installation on production server"
-        echo "  • Network connectivity"
+    # Pre-check: Test connectivity to remote environment
+    message "Testing connectivity to ${env_label} server..."
+    if ! wp "$wp_alias" core is-installed --quiet 2>/dev/null; then
+        error "Cannot connect to ${env_label} server. Please check:"
+        echo "  - SSH connection to ${env_label} server"
+        echo "  - ${wp_alias} alias configuration in ~/.wp-cli/config.yml"
+        echo "  - wp-cli installation on ${env_label} server"
+        echo "  - Network connectivity"
         return 1
     fi
-    message "Production server connection verified ✓"
+    message "${env_label^} server connection verified"
 
-    # Get production URL for search-replace operation
-    message "Getting production site URL..."
-    local PROD_URL=$(wp @prod option get siteurl) || error "Failed to connect to production site"
+    # Get remote URL for search-replace
+    message "Getting ${env_label} site URL..."
+    local REMOTE_URL=$(wp "$wp_alias" option get siteurl 2>/dev/null)
 
-    if [ -z "$PROD_URL" ]; then
-        error "Failed to get production site URL"
+    if [ -z "$REMOTE_URL" ]; then
+        error "Failed to get ${env_label} site URL"
         return 1
     fi
+    message "${env_label^} URL: $REMOTE_URL"
 
-    message "Production URL: $PROD_URL"
-
-    # User confirmation to prevent accidental execution
+    # User confirmation
     if [[ "$SKIP_CONFIRM" != true ]]; then
         echo ""
-        warning "You are about to reset your local database and import the production database."
+        warning "You are about to reset your local database and import the ${env_label} database."
         warning "This will overwrite all local data for site: $SITE_NAME"
-        warning "Production URL: $PROD_URL"
+        warning "${env_label^} URL: $REMOTE_URL"
         warning "Local URL: $LOCAL_URL"
         echo ""
         read "CONFIRM?Are you sure you want to continue? (y/n): "
@@ -240,55 +199,52 @@ pullprod() {
 
     # Database operation files
     local BACKUP_FILE="${SITE_ROOT}/${SITE_NAME}-backup-$(date +%Y%m%d_%H%M%S).sql"
-    local IMPORT_FILE="${SITE_ROOT}/${SITE_NAME}-prod-$(date +%Y%m%d).sql"
+    local IMPORT_FILE="${SITE_ROOT}/${SITE_NAME}-${env_label}-$(date +%Y%m%d).sql"
 
-    # Backup local database for safety
+    # Backup local database
     message "Creating backup of local database..."
-    wp db export "$BACKUP_FILE" || error "Failed to backup local database"
+    wp db export "$BACKUP_FILE" || { error "Failed to backup local database"; return 1; }
     message "Local database backed up to: $BACKUP_FILE"
 
-    # Reset local database to ensure clean import
+    # Reset local database
     message "Resetting local database..."
-    wp db reset --yes || error "Failed to reset local database"
+    wp db reset --yes || { error "Failed to reset local database"; return 1; }
 
-    # Export and import production database
-    message "Exporting database from production..."
-    wp @prod db export - > "$IMPORT_FILE" || error "Failed to export production database"
+    # Export and import remote database
+    message "Exporting database from ${env_label}..."
+    wp "$wp_alias" db export - > "$IMPORT_FILE" || { error "Failed to export ${env_label} database"; return 1; }
 
-    # Verify export success and handle failures
+    # Verify export success — restore on failure
     if [ ! -s "$IMPORT_FILE" ]; then
-        warning "Production database export failed or is empty"
+        warning "${env_label^} database export failed or is empty"
         message "Restoring local database..."
-        wp db reset --yes || error "Failed to reset database for restore"
-        wp db import "$BACKUP_FILE" || error "Failed to restore local database backup"
+        wp db reset --yes || { error "Failed to reset database for restore"; return 1; }
+        wp db import "$BACKUP_FILE" || { error "Failed to restore local database backup"; return 1; }
         rm -f "$BACKUP_FILE" "$IMPORT_FILE"
         error "Database export failed - local database has been restored"
         return 1
     fi
 
-    # Import production database to local
-    message "Importing production database to local..."
+    message "Importing ${env_label} database to local..."
     if ! wp db import "$IMPORT_FILE"; then
-        warning "Failed to import production database"
+        warning "Failed to import ${env_label} database"
         message "Restoring local database..."
-        wp db reset --yes || error "Failed to reset database for restore"
-        wp db import "$BACKUP_FILE" || error "Failed to restore local database backup"
+        wp db reset --yes || { error "Failed to reset database for restore"; return 1; }
+        wp db import "$BACKUP_FILE" || { error "Failed to restore local database backup"; return 1; }
         rm -f "$BACKUP_FILE" "$IMPORT_FILE"
         error "Database import failed - local database has been restored"
         return 1
     fi
 
-    # Clean up temporary files
     rm -f "$BACKUP_FILE" "$IMPORT_FILE"
 
-    # Update URLs in database
-    message "Replacing production URL with local URL..."
-    wp search-replace "$PROD_URL" "$LOCAL_URL" --all-tables --precise || warning "Search-replace operation may not have completed successfully"
+    # URL replacement
+    message "Replacing ${env_label} URL with local URL..."
+    wp search-replace "$REMOTE_URL" "$LOCAL_URL" --all-tables --precise || warning "Search-replace operation may not have completed successfully"
 
     # Set local development credentials
     load_dotfiles_config 2>/dev/null || true
     message "Updating admin user password..."
-    # Get first admin user ID, fallback to user ID 1
     local admin_user_id=$(wp user list --role=administrator --field=ID --format=csv 2>/dev/null | head -n1)
     admin_user_id=${admin_user_id:-1}
     if wp user update "$admin_user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}" 2>/dev/null; then
@@ -305,83 +261,37 @@ pullprod() {
     wp core language update
 
     # Configure plugins for local development
-    # Deactivate production-only plugins and activate development plugins
     message "Configuring plugins for local environment..."
-    wp plugin deactivate worker wp-rocket passwords-evolved
-    wp plugin activate query-monitor acf-theme-code-pro
-    wp jetpack module deactivate protect
-    wp jetpack module deactivate account-protection
+    wp plugin deactivate ${PROD_PLUGINS_DEACTIVATE:-worker wp-rocket passwords-evolved} 2>/dev/null
+    wp plugin activate ${DEV_PLUGINS_ACTIVATE:-query-monitor acf-theme-code-pro} 2>/dev/null
+    wp jetpack module deactivate protect 2>/dev/null
+    wp jetpack module deactivate account-protection 2>/dev/null
 
-    # Success messages
+    # Navigate to theme directory
+    if [ -d "$SITE_ROOT/wp-content/themes/$SITE_NAME" ]; then
+        cd "$SITE_ROOT/wp-content/themes/$SITE_NAME" || true
+    fi
+
+    local END=$(date +%s)
+    local DIFF=$(( END - START ))
+
     message "Database sync completed successfully!"
-    message "Production database imported to local environment."
+    message "${env_label^} database imported to local environment."
     message "Admin password updated to: ${DEV_WP_PASSWORD:-defaultpass}"
     message "Login URL: $LOCAL_URL/wp-admin/"
+    message "Completed in $DIFF seconds."
 }
 
-# Pull a staging WP database to an existing local site
+# Pull production database to local environment.
+# Usage: pullprod [--yes|-y] [--help|-h]
+pullprod() {
+    _pull_db "@prod" "production" "$@"
+}
+
+# Pull staging database to local environment.
+# Usage: pullstage [--yes|-y] [--help|-h]
 pullstage() {
-   # Pre-check: Test SSH connectivity to staging
-   echo "Testing connectivity to staging server..."
-   if ! wp @stage core is-installed --quiet 2>/dev/null; then
-       echo "❌ Cannot connect to staging server. Please check:"
-       echo "  • SSH connection to staging server"
-       echo "  • @stage alias configuration in ~/.wp-cli/config.yml"
-       echo "  • wp-cli installation on staging server"
-       echo "  • Network connectivity"
-       return 1
-   fi
-   echo "✅ Staging server connection verified"
-
-   START=$(date +%s)
-   current=${PWD##*/}
-   cd ~/Sites/$current
-   wp db export _db.sql
-   wp db reset --yes
-   wp @stage db export - > $current.sql
-   echo "rsync of staging database to local $current database complete."
-   wp db import
-   rm -rf $current.sql
-   wp plugin update --all
-   wp theme update --all
-   wp core update
-   wp core language update
-   wp plugin activate query-monitor acf-theme-code-pro
-   wp plugin deactivate passwords-evolved
-   staging_url=$(wp @stage option get siteurl)
-   wp search-replace ${staging_url/$'\n'} https://$current.localhost --all-tables --precise
-   dmcweb
-   cd ~/Sites/$current/wp-content/themes/$current
-   sed -i "" "s/dmcstarter/$current/g" README.md
-
-   END=$(date +%s)
-   DIFF=$(( $END - $START ))
-   echo -e "\n$staging_url database now in use on https://$current.localhost site.\nIt took $DIFF seconds, enjoy!\n"
-}
-
-# Pull a testing WP database to an existing local site
-pulltest() {
-   START=$(date +%s)
-   wp db export _db.sql
-   wp db reset --yes
-   current=${PWD##*/}
-   wp @test db export - > $current.sql
-   echo "rsync of test database to local $current database complete."
-   wp db import
-   rm -rf $current.sql
-   wp plugin update --all
-   wp theme update --all
-   wp core update
-   wp core language update
-   wp plugin activate query-monitor acf-theme-code-pro
-   wp plugin deactivate passwords-evolved
-   test_url=$(wp @test option get siteurl)
-   wp search-replace ${test_url/$'\n'} https://$current.localhost --all-tables --precise
-   dmcweb
-   cd ~/Sites/$current/wp-content/themes/$current
-   END=$(date +%s)
-   DIFF=$(( $END - $START ))
-   echo -e "\n$test_url database now in use on https://$current.localhost site.\nIt took $DIFF seconds, enjoy!\n"
+    _pull_db "@stage" "staging" "$@"
 }
 
 # Push Staging Dry-run Preview Function
@@ -410,8 +320,10 @@ pushstage_dry_run_preview() {
     fi
     
     echo ""
+    load_dotfiles_config 2>/dev/null || true
     echo "🎭 STAGING ENVIRONMENT:"
-    local staging_url="https://$current.dmctest.com.au"
+    local staging_domain="${STAGING_DOMAIN:-dmctest.com.au}"
+    local staging_url="https://$current.$staging_domain"
     echo "  • Target URL: $staging_url"
     echo "  • SSH alias: $current-s"
     
@@ -575,23 +487,21 @@ pushstage() {
    wp @stage db reset --yes
 
    wp @stage db import $current.sql
-   wp @stage search-replace "https://$current.localhost" "https://$current.dmctest.com.au" --all-tables --precise
+   load_dotfiles_config 2>/dev/null || true
+   local staging_domain="${STAGING_DOMAIN:-dmctest.com.au}"
+   local staging_url="https://$current.$staging_domain"
+   wp @stage search-replace "https://$current.localhost" "$staging_url" --all-tables --precise
 
-   wp @stage plugin deactivate query-monitor acf-theme-code-pro wordpress-seo
+   wp @stage plugin deactivate ${STAGING_PLUGINS_DELETE:-query-monitor acf-theme-code-pro wp-seopress} 2>/dev/null
    wp @stage option update blog_public 0
 
-   cd ~/Sites/$current/wp-content/themes/$current
+   cd ~/Sites/"$current"/wp-content/themes/"$current"
    END=$(date +%s)
-   DIFF=$(( $END - $START ))
-   echo -e "\n$current.localhost database now in use on $push_staging_url site.\nIt took $DIFF seconds, enjoy!\n"
+   DIFF=$(( END - START ))
+   echo -e "\n$current.localhost database now in use on $staging_url.\nIt took $DIFF seconds.\n"
 }
 
 alias pulldb='wp @prod db export - > "$(basename $PWD)-$(date +%Y-%d-%m).sql"'
-
-# Check for missing featured images
-check-featured-image() {
-    wp db query "SELECT ID FROM $(wp db prefix)posts WHERE post_type='post' AND post_status='publish' AND ID NOT IN (SELECT post_id FROM $(wp db prefix)postmeta WHERE meta_key='_thumbnail_id');" --skip-column-names
-}
 
 # Update user password to configured dev password.
 # Defaults to the first administrator user found, falls back to user ID 1.
@@ -688,58 +598,60 @@ dmcweb() {
 # WordPress Database Optimization Dry-run Preview Function
 wp_db_optimise_dry_run_preview() {
     local skip_plugins="$1"
-    
-    echo "📊 Analyzing database for cleanup opportunities..."
+    local _p=$(wp db prefix 2>/dev/null)
+    _p="${_p:-wp_}"
+
+    echo "Analysing database for cleanup opportunities..."
     echo ""
-    
+
     # Database cleanup preview
-    echo "🧹 DATABASE CLEANUP PREVIEW:"
-    
+    echo "DATABASE CLEANUP PREVIEW:"
+
     # Expired transients
-    local expired_transients=$(wp db query "SELECT COUNT(*) FROM wp_options WHERE option_name LIKE '_transient_timeout_%' AND option_value < UNIX_TIMESTAMP();" --skip-column-names --silent 2>/dev/null || echo "0")
-    echo "  • Expired transients: $expired_transients entries would be deleted"
-    
+    local expired_transients=$(wp db query "SELECT COUNT(*) FROM ${_p}options WHERE option_name LIKE '_transient_timeout_%' AND option_value < UNIX_TIMESTAMP();" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  - Expired transients: $expired_transients entries would be deleted"
+
     # Orphaned postmeta
-    local orphaned_postmeta=$(wp db query "SELECT COUNT(*) FROM wp_postmeta pm LEFT JOIN wp_posts wp ON wp.ID = pm.post_id WHERE wp.ID IS NULL;" --skip-column-names --silent 2>/dev/null || echo "0")
-    echo "  • Orphaned postmeta: $orphaned_postmeta entries would be removed"
-    
+    local orphaned_postmeta=$(wp db query "SELECT COUNT(*) FROM ${_p}postmeta pm LEFT JOIN ${_p}posts wp ON wp.ID = pm.post_id WHERE wp.ID IS NULL;" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  - Orphaned postmeta: $orphaned_postmeta entries would be removed"
+
     # Auto-draft posts
-    local auto_drafts=$(wp db query "SELECT COUNT(*) FROM wp_posts WHERE post_status = 'auto-draft' AND post_date < DATE_SUB(NOW(), INTERVAL 7 DAY);" --skip-column-names --silent 2>/dev/null || echo "0")
-    echo "  • Old auto-draft posts: $auto_drafts posts would be deleted"
-    
+    local auto_drafts=$(wp db query "SELECT COUNT(*) FROM ${_p}posts WHERE post_status = 'auto-draft' AND post_date < DATE_SUB(NOW(), INTERVAL 7 DAY);" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  - Old auto-draft posts: $auto_drafts posts would be deleted"
+
     # Edit locks
-    local edit_locks=$(wp db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key = '_edit_lock';" --skip-column-names --silent 2>/dev/null || echo "0")
-    echo "  • Edit locks: $edit_locks entries would be cleaned"
-    
+    local edit_locks=$(wp db query "SELECT COUNT(*) FROM ${_p}postmeta WHERE meta_key = '_edit_lock';" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  - Edit locks: $edit_locks entries would be cleaned"
+
     # Action Scheduler
-    local failed_actions=$(wp db query "SELECT COUNT(*) FROM wp_actionscheduler_actions WHERE status = 'failed';" --skip-column-names --silent 2>/dev/null || echo "0")
-    echo "  • Failed Action Scheduler jobs: $failed_actions entries would be deleted"
-    
+    local failed_actions=$(wp db query "SELECT COUNT(*) FROM ${_p}actionscheduler_actions WHERE status = 'failed';" --skip-column-names --silent 2>/dev/null || echo "0")
+    echo "  - Failed Action Scheduler jobs: $failed_actions entries would be deleted"
+
     # Plugin-specific cleanups
     echo ""
-    echo "🧽 PLUGIN-SPECIFIC CLEANUP PREVIEW:"
-    
+    echo "PLUGIN-SPECIFIC CLEANUP PREVIEW:"
+
     # SEOPress
-    local seopress_meta=$(wp db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key LIKE '_seopress_%';" --skip-column-names --silent 2>/dev/null || echo "0")
+    local seopress_meta=$(wp db query "SELECT COUNT(*) FROM ${_p}postmeta WHERE meta_key LIKE '_seopress_%';" --skip-column-names --silent 2>/dev/null || echo "0")
     if [[ "$seopress_meta" -gt 0 ]]; then
-        echo "  • SEOPress metadata: $seopress_meta entries would be cleaned"
+        echo "  - SEOPress metadata: $seopress_meta entries would be cleaned"
     fi
-    
+
     # Jetpack
-    local jetpack_cache=$(wp db query "SELECT COUNT(*) FROM wp_postmeta WHERE meta_key = '_jetpack_related_posts_cache';" --skip-column-names --silent 2>/dev/null || echo "0")
+    local jetpack_cache=$(wp db query "SELECT COUNT(*) FROM ${_p}postmeta WHERE meta_key = '_jetpack_related_posts_cache';" --skip-column-names --silent 2>/dev/null || echo "0")
     if [[ "$jetpack_cache" -gt 0 ]]; then
-        echo "  • Jetpack cache entries: $jetpack_cache entries would be cleaned"
+        echo "  - Jetpack cache entries: $jetpack_cache entries would be cleaned"
     fi
-    
+
     # Check for large plugin tables
-    local gravitysmtp_count=$(wp db query "SELECT COUNT(*) FROM wp_gravitysmtp_events;" --skip-column-names --silent 2>/dev/null || echo "0")
+    local gravitysmtp_count=$(wp db query "SELECT COUNT(*) FROM ${_p}gravitysmtp_events;" --skip-column-names --silent 2>/dev/null || echo "0")
     if [[ "$gravitysmtp_count" -gt 0 ]]; then
-        echo "  • GravitySmtp events: $gravitysmtp_count entries would be truncated"
+        echo "  - GravitySmtp events: $gravitysmtp_count entries would be truncated"
     fi
-    
-    local ewww_count=$(wp db query "SELECT COUNT(*) FROM wp_ewwwio_images;" --skip-column-names --silent 2>/dev/null || echo "0")
+
+    local ewww_count=$(wp db query "SELECT COUNT(*) FROM ${_p}ewwwio_images;" --skip-column-names --silent 2>/dev/null || echo "0")
     if [[ "$ewww_count" -gt 0 ]]; then
-        echo "  • EWWW image entries: $ewww_count entries would be truncated"
+        echo "  - EWWW image entries: $ewww_count entries would be truncated"
     fi
     
     echo ""
@@ -968,55 +880,59 @@ wp_db_optimise() {
        fi
    }
 
-   # Capture BEFORE stats - simplified approach
-   echo "📊 Capturing baseline metrics..."
+   # Resolve table prefix once for all queries
+   local _p=$(wp db prefix 2>/dev/null)
+   _p="${_p:-wp_}"
+
+   # Capture BEFORE stats
+   echo "Capturing baseline metrics..."
    local before_db_raw=$(wp db size 2>/dev/null)
    local before_db_bytes=$(echo "$before_db_raw" | grep -o '[0-9]* B' | head -1 | tr -d ' B' || echo "0")
    local before_db_human=$(bytes_to_human "$before_db_bytes")
-   local before_postmeta=$(wp db query "SELECT COUNT(*) as count FROM wp_postmeta;" --skip-column-names --silent 2>/dev/null || echo "0")
+   local before_postmeta=$(wp db query "SELECT COUNT(*) as count FROM ${_p}postmeta;" --skip-column-names --silent 2>/dev/null || echo "0")
    local before_plugins=$(wp plugin list --status=active --format=count 2>/dev/null || echo "0")
 
    # Basic database cleanup
-   echo "🧹 Cleaning up database..."
+   echo "Cleaning up database..."
    wp transient delete --expired
    wp db optimize
 
-   echo "📋 Cleaning Action Scheduler..."
+   echo "Cleaning Action Scheduler..."
    wp action-scheduler clean
-   wp db query "DELETE FROM wp_actionscheduler_actions WHERE status = 'failed';" 2>/dev/null || echo "   No failed actions to clean"
+   wp db query "DELETE FROM ${_p}actionscheduler_actions WHERE status = 'failed';" 2>/dev/null || echo "   No failed actions to clean"
 
-   echo "🗑️  Removing orphaned data..."
-   wp db query "DELETE pm FROM wp_postmeta pm LEFT JOIN wp_posts wp ON wp.ID = pm.post_id WHERE wp.ID IS NULL;"
-   wp db query "DELETE FROM wp_posts WHERE post_status = 'auto-draft' AND post_date < DATE_SUB(NOW(), INTERVAL 7 DAY);"
+   echo "Removing orphaned data..."
+   wp db query "DELETE pm FROM ${_p}postmeta pm LEFT JOIN ${_p}posts wp ON wp.ID = pm.post_id WHERE wp.ID IS NULL;"
+   wp db query "DELETE FROM ${_p}posts WHERE post_status = 'auto-draft' AND post_date < DATE_SUB(NOW(), INTERVAL 7 DAY);"
 
-   echo "🔄 Cleaning edit locks and metadata..."
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_edit_lock' AND meta_value < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 7 DAY));"
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_edit_last' AND meta_value < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 7 DAY));"
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key LIKE '_transient_%' OR meta_key LIKE '_site_transient_%';"
+   echo "Cleaning edit locks and metadata..."
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = '_edit_lock' AND meta_value < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 7 DAY));"
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = '_edit_last' AND meta_value < UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 7 DAY));"
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key LIKE '_transient_%' OR meta_key LIKE '_site_transient_%';"
 
-   echo "🧽 Plugin-specific cleanup..."
+   echo "Plugin-specific cleanup..."
    # SEOPress cleanup
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key LIKE '_seopress_%';" 2>/dev/null
-   wp db query "TRUNCATE TABLE wp_seopress_content_analysis;" 2>/dev/null || echo "   SEOPress content analysis table not found"
-   wp db query "TRUNCATE TABLE wp_seopress_significant_keywords;" 2>/dev/null || echo "   SEOPress keywords table not found"
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key LIKE '_seopress_%';" 2>/dev/null
+   wp db query "TRUNCATE TABLE ${_p}seopress_content_analysis;" 2>/dev/null || echo "   SEOPress content analysis table not found"
+   wp db query "TRUNCATE TABLE ${_p}seopress_significant_keywords;" 2>/dev/null || echo "   SEOPress keywords table not found"
 
    # Jetpack cleanup
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_jetpack_related_posts_cache';" 2>/dev/null
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_last_editor_used_jetpack';" 2>/dev/null
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = '_jetpack_related_posts_cache';" 2>/dev/null
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = '_last_editor_used_jetpack';" 2>/dev/null
 
    # GravitySmtp cleanup (major performance killer)
-   wp db query "TRUNCATE TABLE wp_gravitysmtp_events;" 2>/dev/null || echo "   GravitySmtp events table not found"
+   wp db query "TRUNCATE TABLE ${_p}gravitysmtp_events;" 2>/dev/null || echo "   GravitySmtp events table not found"
 
    # EWWW Image Optimizer cleanup
-   wp db query "TRUNCATE TABLE wp_ewwwio_images;" 2>/dev/null || echo "   EWWW images table not found"
+   wp db query "TRUNCATE TABLE ${_p}ewwwio_images;" 2>/dev/null || echo "   EWWW images table not found"
 
    # Security plugin cleanup
-   wp db query "TRUNCATE TABLE wp_aiowps_events;" 2>/dev/null || echo "   AIOWPS events table not found"
+   wp db query "TRUNCATE TABLE ${_p}aiowps_events;" 2>/dev/null || echo "   AIOWPS events table not found"
 
    # Miscellaneous cleanup
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_wpas_done_all';" 2>/dev/null
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = 'dmc_show_full_article';" 2>/dev/null
-   wp db query "DELETE FROM wp_postmeta WHERE meta_key = '_dmc_show_full_article';" 2>/dev/null
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = '_wpas_done_all';" 2>/dev/null
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = 'dmc_show_full_article';" 2>/dev/null
+   wp db query "DELETE FROM ${_p}postmeta WHERE meta_key = '_dmc_show_full_article';" 2>/dev/null
 
    echo "⚙️  Updating WordPress configuration..."
    load_dotfiles_config 2>/dev/null || true
@@ -1050,7 +966,7 @@ wp_db_optimise() {
    local after_db_raw=$(wp db size 2>/dev/null)
    local after_db_bytes=$(echo "$after_db_raw" | grep -o '[0-9]* B' | head -1 | tr -d ' B' || echo "0")
    local after_db_human=$(bytes_to_human "$after_db_bytes")
-   local after_postmeta=$(wp db query "SELECT COUNT(*) as count FROM wp_postmeta;" --skip-column-names --silent 2>/dev/null || echo "0")
+   local after_postmeta=$(wp db query "SELECT COUNT(*) as count FROM ${_p}postmeta;" --skip-column-names --silent 2>/dev/null || echo "0")
    local after_plugins=$(wp plugin list --status=active --format=count 2>/dev/null || echo "0")
 
    # Calculate savings

@@ -24,8 +24,6 @@
 #   - -target [staging|production] : Specify deployment target
 #   - --dry-run               : Preview what would be pushed without transferring
 #
-# • getrecentuploads [alias]   - Sync only recently modified uploads (last 60 days)
-#
 # Features:
 # • Automatic SSH connectivity validation before sync
 # • Progress bars and transfer statistics  
@@ -41,6 +39,36 @@
 # • Auto-detects WordPress root and uploads directory structure
 #
 # ============================================================================
+
+# Internal helper: Build rsync exclude options from UPLOAD_EXCLUDES config.
+# Populates the caller's exclude_opts array.
+_build_exclude_opts() {
+    load_dotfiles_config 2>/dev/null || true
+    exclude_opts=()
+    for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
+        exclude_opts+=(--exclude "$pattern")
+    done
+}
+
+# Internal helper: Resolve SSH alias from WP-CLI config or directory name.
+# Arguments: $1 = WP-CLI alias (@prod, @stage), $2 = fallback suffix (l, s)
+# Returns: SSH alias via stdout
+_get_ssh_alias() {
+    local wp_alias="$1"
+    local fallback_suffix="$2"
+    local current=${PWD##*/}
+    local ssh_alias=""
+
+    if [ -n "$wp_alias" ] && command -v wp > /dev/null 2>&1; then
+        ssh_alias=$(wp cli alias get "$wp_alias" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
+    fi
+
+    if [ -z "$ssh_alias" ]; then
+        ssh_alias="${current}-${fallback_suffix}"
+    fi
+
+    echo "$ssh_alias"
+}
 
 # Download uploads from a specified environment (staging or live) for the current site.
 #
@@ -144,17 +172,7 @@ getups() {
         wp_alias="@stage"
     fi
 
-    ssh_alias=""
-    # Try to get SSH alias from WP-CLI configuration
-    if [ -n "$wp_alias" ] && command -v wp > /dev/null 2>&1; then
-        # Get the SSH host from WP-CLI alias configuration
-        ssh_alias=$(wp cli alias get "$wp_alias" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
-    fi
-
-    # Fall back to directory-based naming if WP-CLI lookup failed
-    if [ -z "$ssh_alias" ]; then
-        ssh_alias="$current-$1"
-    fi
+    local ssh_alias=$(_get_ssh_alias "$wp_alias" "$1")
 
     # Pre-check: Validate SSH configuration exists
     if ! grep -q "^Host $ssh_alias$" ~/.ssh/config; then
@@ -204,13 +222,10 @@ getups() {
     echo "✅ Remote uploads directory verified"
 
     if [ "$2" = "-week" ]; then
-        # Build exclude options from configuration
         local -a exclude_opts=()
-        for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
-            exclude_opts+=(--exclude "$pattern")
-        done
+        _build_exclude_opts
 
-        echo "📁 Syncing uploads from $ssh_alias modified in the last 7 days..."
+        echo "Syncing uploads from $ssh_alias modified in the last 7 days..."
 
         # Use rsync with files-from to only sync files modified in last 7 days
         rsync -av --progress \
@@ -231,31 +246,25 @@ getups() {
         printf -v current_month "%02d" $current_month
         printf -v prev_month "%02d" $prev_month
 
-        # Build exclude options from configuration
         local -a exclude_opts=()
-        for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
-            exclude_opts+=(--exclude "$pattern")
-        done
+        _build_exclude_opts
 
-        echo "📁 Syncing uploads from $ssh_alias for $current_year/$current_month..."
+        echo "Syncing uploads from $ssh_alias for $current_year/$current_month..."
         rsync -av --progress \
             "${exclude_opts[@]}" \
             "$ssh_alias:~/www/wp-content/uploads/$current_year/$current_month/" \
             "./$current_year/$current_month/"
 
-        echo "📁 Syncing uploads from $ssh_alias for $prev_year/$prev_month..."
+        echo "Syncing uploads from $ssh_alias for $prev_year/$prev_month..."
         rsync -av --progress \
             "${exclude_opts[@]}" \
             "$ssh_alias:~/www/wp-content/uploads/$prev_year/$prev_month/" \
             "./$prev_year/$prev_month/"
     else
-        # Build exclude options from configuration
         local -a exclude_opts=()
-        for pattern in ${UPLOAD_EXCLUDES:-*.pdf *.docx}; do
-            exclude_opts+=(--exclude "$pattern")
-        done
+        _build_exclude_opts
 
-        echo "📁 Syncing all uploads from $ssh_alias..."
+        echo "Syncing all uploads from $ssh_alias..."
         rsync -av --progress \
             "${exclude_opts[@]}" \
             "$ssh_alias:~/www/wp-content/uploads/" .
@@ -311,7 +320,6 @@ pushups() {
         current=${PWD##*/}
         sitedir="$current"
 
-        # Determine SSH alias from WP-CLI config or fall back to directory name
         local wp_alias=""
         if [ "$target" = "l" ]; then
             wp_alias="@prod"
@@ -319,17 +327,7 @@ pushups() {
             wp_alias="@stage"
         fi
 
-        sshalias=""
-        # Try to get SSH alias from WP-CLI configuration
-        if [ -n "$wp_alias" ] && command -v wp > /dev/null 2>&1; then
-            # Get the SSH host from WP-CLI alias configuration
-            sshalias=$(wp cli alias get "$wp_alias" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
-        fi
-
-        # Fall back to directory-based naming if WP-CLI lookup failed
-        if [ -z "$sshalias" ]; then
-            sshalias="${current}-${target}"
-        fi
+        sshalias=$(_get_ssh_alias "$wp_alias" "$target")
     else
         echo "Enter SSH alias to deploy to (without -s/-l suffix):"
         read -r sitename
@@ -390,36 +388,4 @@ pushups() {
     echo "📤 Pushing uploads to $sshalias..."
     cd ~/Sites/"${sitedir}"/wp-content/uploads || return
     rsync -avzW --progress * "$sshalias:~/www/wp-content/uploads"
-}
-
-# Get recent uploads
-getrecentuploads() {
-   current=${PWD##*/}
-   cd ~/Sites/$current/wp-content/uploads || return
-
-   TARGET=~/Sites/$current/wp-content/uploads
-   SOURCE=/home/djerriwa/www/wp-content/uploads
-
-   # Determine SSH alias from WP-CLI config or fall back to directory name
-   HOST=""
-   if command -v wp > /dev/null 2>&1; then
-       # Get the SSH host from WP-CLI @prod alias configuration
-       HOST=$(wp cli alias get "@prod" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
-   fi
-
-   # Fall back to directory-based naming if WP-CLI lookup failed
-   if [ -z "$HOST" ]; then
-       HOST="$current-l"
-   fi
-
-   touch $TARGET/last_sync
-
-   rsync \
-       -ahrv \
-       --update \
-       --files-from=<(ssh $HOST "find $SOURCE -type f -newer $SOURCE/last_sync -exec realpath --relative-to=$SOURCE '{}' \;") \
-       $HOST:$SOURCE \
-       $TARGET
-
-   rsync $TARGET/last_sync $HOST:$SOURCE
 }

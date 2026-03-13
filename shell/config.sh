@@ -41,6 +41,10 @@
 # • DEFAULT_MAX_MEMORY_LIMIT   - WordPress max memory limit
 # • DEV_WP_PASSWORD            - WordPress development password (override in config!)
 # • SSH_PROXY_HOST             - SSH proxy host for SOCKS tunneling (override in config!)
+# • DEV_PLUGINS_ACTIVATE       - Plugins to activate locally after DB pull
+# • PROD_PLUGINS_DEACTIVATE    - Production-only plugins to deactivate locally
+# • STAGING_PLUGINS_DELETE      - Dev plugins to remove on staging deploys
+# • STAGING_DOMAIN             - Staging domain suffix (default: dmctest.com.au)
 #
 # ============================================================================
 
@@ -86,6 +90,10 @@ load_dotfiles_config() {
     DEFAULT_MAX_MEMORY_LIMIT="1024M"                          # WordPress max memory limit
     DEV_WP_PASSWORD="defaultpass"                             # Default WordPress dev password (OVERRIDE IN .dotfiles-config!)
     SSH_PROXY_HOST="localhost"                                 # Default SSH proxy host (OVERRIDE IN .dotfiles-config!)
+    DEV_PLUGINS_ACTIVATE="query-monitor acf-theme-code-pro"   # Plugins to activate locally after DB pull
+    PROD_PLUGINS_DEACTIVATE="worker wp-rocket passwords-evolved"  # Production-only plugins to deactivate locally
+    STAGING_PLUGINS_DELETE="query-monitor acf-theme-code-pro wp-seopress"  # Dev plugins to remove on staging
+    STAGING_DOMAIN="dmctest.com.au"                           # Staging domain suffix
 
     # LOAD USER OVERRIDES:
     # If .dotfiles-config exists, source it to override the defaults above
@@ -179,6 +187,10 @@ show_dotfiles_config() {
     echo "  SSH Timeout: ${SSH_TIMEOUT}s"
     echo "  Memory Limit: $DEFAULT_MEMORY_LIMIT"
     echo "  Max Memory Limit: $DEFAULT_MAX_MEMORY_LIMIT"
+    echo "  Dev Plugins (activate): $DEV_PLUGINS_ACTIVATE"
+    echo "  Prod Plugins (deactivate): $PROD_PLUGINS_DEACTIVATE"
+    echo "  Staging Plugins (delete): $STAGING_PLUGINS_DELETE"
+    echo "  Staging Domain: $STAGING_DOMAIN"
     echo ""
 
     if [[ ! -f "$DOTFILES_CONFIG_FILE" ]]; then
