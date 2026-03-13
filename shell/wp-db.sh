@@ -277,7 +277,7 @@ _pull_db() {
 
     message "Database sync completed successfully!"
     message "${env_label^} database imported to local environment."
-    message "Admin password updated to: ${DEV_WP_PASSWORD:-defaultpass}"
+    message "Admin password updated."
     message "Login URL: $LOCAL_URL/wp-admin/"
     message "Completed in $DIFF seconds."
 }
@@ -467,26 +467,26 @@ pushstage() {
 
    START=$(date +%s)
    current=${PWD##*/}
-   cd ~/Sites/$current || return
+   cd ~/Sites/"$current" || return
 
    # Additional pre-check: Test direct SSH connection for file transfer
    echo "Testing SSH file transfer connectivity..."
-   if ! ssh -q "$current-s" exit 2>/dev/null; then
-       echo "❌ Cannot establish SSH connection to $current-s. Please check:"
-       echo "  • SSH config entry for $current-s"
+   if ! ssh -q "${current}-s" exit 2>/dev/null; then
+       echo "❌ Cannot establish SSH connection to ${current}-s. Please check:"
+       echo "  • SSH config entry for ${current}-s"
        echo "  • SSH key authentication"
        echo "  • Network connectivity"
        return 1
    fi
    echo "✅ SSH file transfer connectivity verified"
 
-   wp db export $current.sql
-   rsync $current.sql $current-s:~/
+   wp db export "${current}.sql"
+   rsync "${current}.sql" "${current}-s":~/
 
    wp @stage db export backup.sql
    wp @stage db reset --yes
 
-   wp @stage db import $current.sql
+   wp @stage db import "${current}.sql"
    load_dotfiles_config 2>/dev/null || true
    local staging_domain="${STAGING_DOMAIN:-dmctest.com.au}"
    local staging_url="https://$current.$staging_domain"
@@ -501,7 +501,9 @@ pushstage() {
    echo -e "\n$current.localhost database now in use on $staging_url.\nIt took $DIFF seconds.\n"
 }
 
-alias pulldb='wp @prod db export - > "$(basename $PWD)-$(date +%Y-%d-%m).sql"'
+pulldb() {
+    wp @prod db export - > "$(basename "$PWD")-$(date +%Y-%m-%d).sql"
+}
 
 # Update user password to configured dev password.
 # Defaults to the first administrator user found, falls back to user ID 1.

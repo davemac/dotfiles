@@ -59,7 +59,7 @@
 # For initial site deployment to staging server
 firstdeploy() {
    current=${PWD##*/}
-   cd ~/Sites/$current || return
+   cd ~/Sites/"$current" || return
 
    echo "Staging url fragment (eg staging-subdomain):"
    read surl
@@ -68,7 +68,8 @@ firstdeploy() {
    echo "Staging database user:"
    read dbuser
    echo "Staging database password:"
-   read dbpass
+   read -rs dbpass
+   echo
 
    # Validate SSH alias exists
    if ! grep -q "^Host ${current}-s$" ~/.ssh/config; then
@@ -112,20 +113,21 @@ PHP
    wp @stage option update blog_public 0
    wp @stage rewrite flush
 
-   ssh $current-s "cd ~/www/wp-content && find . -type d -exec chmod 755 {} \; && find . -type f -exec chmod 644 {} \;"
+   ssh "${current}-s" "cd ~/www/wp-content && find . -type d -exec chmod 755 {} \; && find . -type f -exec chmod 644 {} \;"
 }
 
 # For initial site deployment to production server
 firstdeploy-prod() {
    current=${PWD##*/}
-   cd ~/Sites/$current || return
+   cd ~/Sites/"$current" || return
 
    echo "Database name:"
    read dbname
    echo "Database user:"
    read dbuser
    echo "Database password:"
-   read dbpass
+   read -rs dbpass
+   echo
    echo "Live URL (no https://):"
    read liveurl
 

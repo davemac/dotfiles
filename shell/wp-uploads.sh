@@ -387,5 +387,5 @@ pushups() {
 
     echo "📤 Pushing uploads to $sshalias..."
     cd ~/Sites/"${sitedir}"/wp-content/uploads || return
-    rsync -avzW --progress * "$sshalias:~/www/wp-content/uploads"
+    rsync -avzW --progress ./ "$sshalias:~/www/wp-content/uploads"
 }
