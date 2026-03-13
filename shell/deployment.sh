@@ -59,7 +59,7 @@
 # For initial site deployment to staging server
 firstdeploy() {
    current=${PWD##*/}
-   cd ~/Sites/$current || return
+   cd ~/Sites/"$current" || return
 
    echo "Staging url fragment (eg staging-subdomain):"
    read surl
@@ -68,10 +68,20 @@ firstdeploy() {
    echo "Staging database user:"
    read dbuser
    echo "Staging database password:"
-   read dbpass
+   read -rs dbpass
+   echo
 
-   wp db export $current.sql
-   rsync $current.sql $current-s:~/
+   # Validate SSH alias exists
+   if ! grep -q "^Host ${current}-s$" ~/.ssh/config; then
+       echo "Error: SSH alias '${current}-s' not found in ~/.ssh/config"
+       return 1
+   fi
+
+   load_dotfiles_config 2>/dev/null || true
+   local staging_domain="${STAGING_DOMAIN:-dmctest.com.au}"
+
+   wp db export "${current}.sql"
+   rsync "${current}.sql" "${current}-s":~/
 
    wp @stage core download --path=www --skip-content
 
@@ -86,44 +96,49 @@ firstdeploy() {
    define( 'GOOGLE_API_KEY', getenv('WP_GOOGLE_API_KEY') );
 PHP
 
-   wp @stage db import $current.sql
-   wp @stage search-replace "$current.localhost" "$surl.dmctest.com.au" --all-tables --precise
+   wp @stage db import "${current}.sql"
+   wp @stage search-replace "${current}.localhost" "${surl}.${staging_domain}" --all-tables --precise
 
    # Create wp-content directory if it doesn't exist
-   ssh $current-s "mkdir -p ~/www/wp-content"
+   ssh "${current}-s" "mkdir -p ~/www/wp-content"
 
    # Rsync theme and mu-plugins, including vendor directories
-   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/themes/ $current-s:~/www/wp-content/themes/
-   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/mu-plugins/ $current-s:~/www/wp-content/mu-plugins/
-   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/plugins/ $current-s:~/www/wp-content/plugins/
-   rsync -avzW --progress wp-content/uploads/ $current-s:~/www/wp-content/uploads/
+   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/themes/ "${current}-s":~/www/wp-content/themes/
+   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/mu-plugins/ "${current}-s":~/www/wp-content/mu-plugins/
+   rsync -avzW --progress --exclude-from "rsync-exclude.txt" wp-content/plugins/ "${current}-s":~/www/wp-content/plugins/
+   rsync -avzW --progress wp-content/uploads/ "${current}-s":~/www/wp-content/uploads/
 
-    # rsync --exclude-from "rsync-exclude.txt" wp-content $current-s:~/www
-
-   wp @stage plugin deactivate query-monitor acf-theme-code-pro wp-seopress
-   wp @stage plugin delete query-monitor acf-theme-code-pro wp-seopress
+   wp @stage plugin deactivate ${STAGING_PLUGINS_DELETE:-query-monitor acf-theme-code-pro wp-seopress} 2>/dev/null
+   wp @stage plugin delete ${STAGING_PLUGINS_DELETE:-query-monitor acf-theme-code-pro wp-seopress} 2>/dev/null
    wp @stage option update blog_public 0
    wp @stage rewrite flush
 
-   ssh $current-s "cd ~/www/wp-content && find . -type d -exec chmod 755 {} \; && find . -type f -exec chmod 644 {} \;"
+   ssh "${current}-s" "cd ~/www/wp-content && find . -type d -exec chmod 755 {} \; && find . -type f -exec chmod 644 {} \;"
 }
 
 # For initial site deployment to production server
 firstdeploy-prod() {
    current=${PWD##*/}
-   cd ~/Sites/$current || return
+   cd ~/Sites/"$current" || return
 
    echo "Database name:"
    read dbname
    echo "Database user:"
    read dbuser
    echo "Database password:"
-   read dbpass
+   read -rs dbpass
+   echo
    echo "Live URL (no https://):"
    read liveurl
 
-   wp db export $current.sql
-   rsync $current.sql $current-l:~/
+   # Validate SSH alias exists
+   if ! grep -q "^Host ${current}-l$" ~/.ssh/config; then
+       echo "Error: SSH alias '${current}-l' not found in ~/.ssh/config"
+       return 1
+   fi
+
+   wp db export "${current}.sql"
+   rsync "${current}.sql" "${current}-l":~/
 
    wp @prod core download --path=www --skip-content
 
@@ -135,13 +150,14 @@ firstdeploy-prod() {
    define( 'JETPACK_STAGING_MODE', true);
 PHP
 
-   wp @prod db import $current.sql
-   wp @prod search-replace "https://$current.localhost" "https://$liveurl" --all-tables --precise
+   wp @prod db import "${current}.sql"
+   wp @prod search-replace "https://${current}.localhost" "https://${liveurl}" --all-tables --precise
 
-   rsync --exclude-from "rsync-exclude.txt" wp-content $current-l:~/www
+   rsync --exclude-from "rsync-exclude.txt" wp-content "${current}-l":~/www
 
-   wp @prod plugin deactivate query-monitor acf-theme-code-pro
-   wp @prod plugin delete query-monitor acf-theme-code-pro
+   load_dotfiles_config 2>/dev/null || true
+   wp @prod plugin deactivate ${STAGING_PLUGINS_DELETE:-query-monitor acf-theme-code-pro wp-seopress} 2>/dev/null
+   wp @prod plugin delete ${STAGING_PLUGINS_DELETE:-query-monitor acf-theme-code-pro wp-seopress} 2>/dev/null
    wp @prod rewrite flush
 }
 

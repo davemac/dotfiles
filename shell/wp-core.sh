@@ -12,8 +12,7 @@
 #   Equivalent to: wp plugin update --all; wp theme update --all; wp core update
 #
 # Site Information:
-# • siteurl                    - Display current site URL from database
-#   Queries wp_options table for siteurl option
+# • siteurl                    - Display current site URL (via wp option get)
 #
 # Plugin Management:
 # • plugincheck                - Check for plugin conflicts by testing each plugin individually
@@ -28,16 +27,15 @@
 #
 # Note: This file focuses on core WordPress operations. Other specialized functions
 # are organized into dedicated files:
-# • wp-uploads.sh    - Upload/file sync operations  
-# • wp-dev.sh        - Development tools and content creation
+# • wp-uploads.sh    - Upload/file sync operations
 # • wp-diagnostics.sh - Troubleshooting and testing
 # • wp-db.sh         - Database operations and management
 #
 # ============================================================================
 
 # Common WP-CLI aliases
-alias updatem="wp plugin update --all;wp theme update --all; wp core update"
-alias siteurl="wp db query 'SELECT * FROM wp_options WHERE option_name=\"siteurl\"' --skip-column-names"
+alias updatem="wp plugin update --all && wp theme update --all && wp core update"
+alias siteurl="wp option get siteurl"
 alias plugincheck="wp plugin list --field=name | xargs -n1 -I % wp --skip-plugins=% plugin get % --field=name"
 alias onetimeinstall="wp @prod plugin install one-time-login --activate"
 alias onetimeadmin="wp user one-time-login admin"
