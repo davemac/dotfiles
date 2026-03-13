@@ -510,8 +510,8 @@ _cf_get_credentials_batch() {
 #   - Test URL → Domain homepage
 #
 # Configures:
-# - Performance: HTTP/3, 0-RTT, Early Hints, Auto Minify, Always Online
-# - Security: SSL Strict, TLS 1.3, Min TLS 1.2, HTTPS Rewrites
+# - Performance: HTTP/3, 0-RTT, Early Hints, Always Online (Auto Minify OFF, Rocket Loader OFF)
+# - Security: SSL Strict, TLS 1.3, Min TLS 1.2, HTTPS Rewrites, Always Use HTTPS
 # - Caching: Static assets, WooCommerce bypass, images, CSS/JS/fonts
 #
 # Logging:
@@ -549,7 +549,8 @@ cf-opt() {
         echo "  - HTTP/3 (QUIC)              -> ON"
         echo "  - 0-RTT Connection Resumption -> ON (Pro plan required)"
         echo "  - Early Hints                -> ON"
-        echo "  - Auto Minify (CSS/HTML/JS)  -> ON"
+        echo "  - Auto Minify (CSS/HTML/JS)  -> OFF (handled by LiteSpeed at origin)"
+        echo "  - Rocket Loader              -> OFF (conflicts with LiteSpeed js_defer)"
         echo "  - Always Online              -> ON"
         echo "  - WebSockets                 -> ON"
         echo "  - Opportunistic Encryption   -> ON"
@@ -560,6 +561,7 @@ cf-opt() {
         echo "  - SSL Mode                   -> Full (Strict)"
         echo "  - TLS 1.3                    -> ON"
         echo "  - Minimum TLS Version        -> 1.2"
+        echo "  - Always Use HTTPS           -> ON"
         echo "  - Automatic HTTPS Rewrites   -> ON"
         echo ""
         echo "CACHE RULES (will create/update):"
@@ -654,8 +656,12 @@ cf-opt() {
     # Enable Early Hints
     _cf_apply_setting "Enabling Early Hints" "early_hints" '{"value": "on"}'
 
-    # Enable Auto Minify (CSS, JS, HTML)
-    _cf_apply_setting "Enabling Auto Minify" "minify" '{"value": {"css": "on", "html": "on", "js": "on"}}'
+    # Auto Minify OFF — minification handled at origin by LiteSpeed.
+    # Double-minification (CF + LiteSpeed) can corrupt CSS/JS.
+    _cf_apply_setting "Disabling Auto Minify (origin handles this)" "minify" '{"value": {"css": "off", "html": "off", "js": "off"}}'
+
+    # Rocket Loader OFF — conflicts with LiteSpeed js_defer.
+    _cf_apply_setting "Disabling Rocket Loader (conflicts with LiteSpeed js_defer)" "rocket_loader" '{"value": "off"}'
 
     # Enable Always Online
     _cf_apply_setting "Enabling Always Online" "always_online" '{"value": "on"}'
@@ -853,6 +859,9 @@ cf-opt() {
     # Set SSL to Full (Strict)
     _cf_apply_setting "Setting SSL to Full (Strict)" "ssl" '{"value": "strict"}'
 
+    # Enable Always Use HTTPS (redirect at edge, not origin)
+    _cf_apply_setting "Enabling Always Use HTTPS" "always_use_https" '{"value": "on"}'
+
     # Enable Automatic HTTPS Rewrites
     _cf_apply_setting "Enabling Automatic HTTPS Rewrites" "automatic_https_rewrites" '{"value": "on"}'
 
@@ -886,6 +895,9 @@ cf-opt() {
     _cf_log "  SSL Mode:      $(echo $settings | jq -r '.result[] | select(.id == "ssl") | .value')"
     _cf_log "  TLS 1.3:       $(echo $settings | jq -r '.result[] | select(.id == "tls_1_3") | .value')"
     _cf_log "  Min TLS:       $(echo $settings | jq -r '.result[] | select(.id == "min_tls_version") | .value')"
+    _cf_log "  Always HTTPS:  $(echo $settings | jq -r '.result[] | select(.id == "always_use_https") | .value')"
+    _cf_log "  Auto Minify:   $(echo $settings | jq -r '.result[] | select(.id == "minify") | .value | "css=\(.css) html=\(.html) js=\(.js)"')"
+    _cf_log "  Rocket Loader: $(echo $settings | jq -r '.result[] | select(.id == "rocket_loader") | .value')"
 
     _cf_log ""
 
@@ -991,6 +1003,7 @@ cf-check() {
     echo "  WebSockets:              $(echo $settings | jq -r '.result[] | select(.id == "websockets") | .value')"
     echo "  Always Online:           $(echo $settings | jq -r '.result[] | select(.id == "always_online") | .value')"
     echo "  Tiered Cache:            $tiered_value"
+    echo "  Rocket Loader:           $(echo $settings | jq -r '.result[] | select(.id == "rocket_loader") | .value')"
     echo "  Browser Cache TTL:       $(echo $settings | jq -r '.result[] | select(.id == "browser_cache_ttl") | .value') seconds"
     echo ""
 
@@ -1007,6 +1020,7 @@ cf-check() {
     echo "  SSL Mode:                $(echo $settings | jq -r '.result[] | select(.id == "ssl") | .value')"
     echo "  TLS 1.3:                 $(echo $settings | jq -r '.result[] | select(.id == "tls_1_3") | .value')"
     echo "  Min TLS Version:         $(echo $settings | jq -r '.result[] | select(.id == "min_tls_version") | .value')"
+    echo "  Always Use HTTPS:        $(echo $settings | jq -r '.result[] | select(.id == "always_use_https") | .value')"
     echo "  HTTPS Rewrites:          $(echo $settings | jq -r '.result[] | select(.id == "automatic_https_rewrites") | .value')"
     echo "  Opportunistic Encryption:$(echo $settings | jq -r '.result[] | select(.id == "opportunistic_encryption") | .value')"
     echo ""
@@ -1102,7 +1116,8 @@ Creating an API Token:
 What cf-opt does:
   1. Applies Performance Settings:
      - HTTP/3 (QUIC), Early Hints, Tiered Cache
-     - Auto Minify (CSS, HTML, JS)
+     - Auto Minify -> OFF (LiteSpeed handles minification at origin)
+     - Rocket Loader -> OFF (conflicts with LiteSpeed js_defer)
      - Always Online, WebSockets, Opportunistic Encryption
      - 0-RTT (Pro plan required)
 
@@ -1114,6 +1129,7 @@ What cf-opt does:
 
   3. Configures Security:
      - SSL Full (Strict), TLS 1.3, Min TLS 1.2
+     - Always Use HTTPS
      - Automatic HTTPS Rewrites
 
   4. Purges Cache (optional)
