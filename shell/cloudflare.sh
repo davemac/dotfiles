@@ -967,26 +967,49 @@ cf-opt() {
 }
 
 # -----------------------------------------------------------------------------
-# cf-check: Check current Cloudflare settings for a zone
+# cf-check: Audit Cloudflare settings against established standards
 #
-# Displays:
-# - Performance settings (HTTP/3, Early Hints, 0-RTT, etc.)
-# - Minification settings
-# - Security settings (SSL, TLS)
-# - Cache rules
+# Checks all zone settings and compares against the LiteSpeed + CF
+# standards. Displays pass/fail for each setting with actionable output.
+#
+# Usage:
+#   cf-check                  # Interactive mode
+#   cf-check DOMAIN           # Batch mode (non-interactive)
 # -----------------------------------------------------------------------------
 cf-check() {
-    echo "Cloudflare Settings Checker"
-    echo "==========================="
-    echo ""
+    local batch_mode=""
+    local batch_domain=""
+
+    if [[ -n "$1" ]]; then
+        batch_mode="batch"
+        batch_domain="$1"
+    fi
+
+    # Get zone name for display
+    local zone_name=""
 
     # Get credentials
-    if ! _cf_get_credentials; then
-        return 1
+    if [[ "$batch_mode" == "batch" ]]; then
+        if ! _cf_get_credentials_batch "$batch_domain"; then
+            return 1
+        fi
+    else
+        if ! _cf_get_credentials; then
+            return 1
+        fi
     fi
 
     local zone_id="$CF_ZONE_ID"
     local api_token="$CF_API_TOKEN"
+
+    # Get zone name
+    local zone_info=$(_cf_api GET "/zones/$zone_id" "" "$zone_id" "$api_token")
+    zone_name=$(echo "$zone_info" | jq -r '.result.name')
+
+    echo ""
+    echo "Cloudflare Audit: $zone_name"
+    echo "$(printf '=%.0s' {1..60})"
+    echo ""
 
     # Get all settings
     local settings=$(_cf_api GET "/zones/$zone_id/settings" "" "$zone_id" "$api_token")
@@ -995,62 +1018,177 @@ cf-check() {
     local tiered_status=$(_cf_api GET "/zones/$zone_id/argo/tiered_caching" "" "$zone_id" "$api_token")
     local tiered_value=$(echo "$tiered_status" | jq -r '.result.value // "unknown"')
 
-    # Performance Settings
-    echo "Performance Settings:"
-    echo "  HTTP/3 (QUIC):           $(echo $settings | jq -r '.result[] | select(.id == "http3") | .value')"
-    echo "  Early Hints:             $(echo $settings | jq -r '.result[] | select(.id == "early_hints") | .value')"
-    echo "  0-RTT:                   $(echo $settings | jq -r '.result[] | select(.id == "0rtt") | .value') (Pro plan required)"
-    echo "  WebSockets:              $(echo $settings | jq -r '.result[] | select(.id == "websockets") | .value')"
-    echo "  Always Online:           $(echo $settings | jq -r '.result[] | select(.id == "always_online") | .value')"
-    echo "  Tiered Cache:            $tiered_value"
-    echo "  Rocket Loader:           $(echo $settings | jq -r '.result[] | select(.id == "rocket_loader") | .value')"
-    echo "  Browser Cache TTL:       $(echo $settings | jq -r '.result[] | select(.id == "browser_cache_ttl") | .value') seconds"
+    # -------------------------------------------------------------------------
+    # Helper: Check a setting against expected value and display result
+    # Usage: _cf_check_setting "Label" "setting_id" "expected_value" [note]
+    # -------------------------------------------------------------------------
+    local issue_count=0
+    local warn_count=0
+
+    _cf_check_setting() {
+        local label="$1"
+        local setting_id="$2"
+        local expected="$3"
+        local note="$4"
+        local actual=$(echo $settings | jq -r ".result[] | select(.id == \"$setting_id\") | .value")
+
+        if [[ "$actual" == "$expected" ]]; then
+            printf "  %-30s %-10s %s\n" "$label" "$actual" "[OK]"
+        else
+            printf "  %-30s %-10s %s\n" "$label" "$actual" "[FAIL] expected: $expected"
+            if [[ -n "$note" ]]; then
+                printf "  %-30s %s\n" "" "$note"
+            fi
+            ((issue_count++))
+        fi
+    }
+
+    _cf_check_warn() {
+        local label="$1"
+        local actual="$2"
+        local message="$3"
+
+        printf "  %-30s %-10s %s\n" "$label" "$actual" "[WARN] $message"
+        ((warn_count++))
+    }
+
+    # -------------------------------------------------------------------------
+    # 1. Standards compliance — settings that MUST match
+    # -------------------------------------------------------------------------
+    echo "STANDARDS COMPLIANCE"
+    echo "$(printf -- '-%.0s' {1..60})"
+    echo ""
+    echo "  These must match to avoid conflicts with LiteSpeed at origin."
     echo ""
 
-    # Minification
-    echo "Minification:"
+    # Auto Minify (must be off — LiteSpeed handles this)
     local minify=$(echo $settings | jq -r '.result[] | select(.id == "minify") | .value')
-    echo "  CSS:  $(echo $minify | jq -r '.css')"
-    echo "  HTML: $(echo $minify | jq -r '.html')"
-    echo "  JS:   $(echo $minify | jq -r '.js')"
+    local min_css=$(echo $minify | jq -r '.css')
+    local min_html=$(echo $minify | jq -r '.html')
+    local min_js=$(echo $minify | jq -r '.js')
+
+    if [[ "$min_css" == "off" && "$min_html" == "off" && "$min_js" == "off" ]]; then
+        printf "  %-30s %-10s %s\n" "Auto Minify (CSS/HTML/JS)" "all off" "[OK]"
+    else
+        printf "  %-30s %-10s %s\n" "Auto Minify (CSS/HTML/JS)" "css=$min_css html=$min_html js=$min_js" "[FAIL]"
+        printf "  %-30s %s\n" "" "Must be OFF — LiteSpeed handles minification at origin"
+        ((issue_count++))
+    fi
+
+    _cf_check_setting "Rocket Loader" "rocket_loader" "off" \
+        "Must be OFF — conflicts with LiteSpeed js_defer"
+
+    _cf_check_setting "Browser Cache TTL" "browser_cache_ttl" "0" \
+        "Must be 0 (respect origin) — LiteSpeed controls cache headers"
+
+    _cf_check_setting "SSL Mode" "ssl" "strict" \
+        "Must be strict — origin has valid certificate"
+
+    _cf_check_setting "Always Use HTTPS" "always_use_https" "on" \
+        "Should redirect at edge, not origin"
+
     echo ""
 
-    # Security Settings
-    echo "Security Settings:"
-    echo "  SSL Mode:                $(echo $settings | jq -r '.result[] | select(.id == "ssl") | .value')"
-    echo "  TLS 1.3:                 $(echo $settings | jq -r '.result[] | select(.id == "tls_1_3") | .value')"
-    echo "  Min TLS Version:         $(echo $settings | jq -r '.result[] | select(.id == "min_tls_version") | .value')"
-    echo "  Always Use HTTPS:        $(echo $settings | jq -r '.result[] | select(.id == "always_use_https") | .value')"
-    echo "  HTTPS Rewrites:          $(echo $settings | jq -r '.result[] | select(.id == "automatic_https_rewrites") | .value')"
-    echo "  Opportunistic Encryption:$(echo $settings | jq -r '.result[] | select(.id == "opportunistic_encryption") | .value')"
+    # -------------------------------------------------------------------------
+    # 2. Performance settings — recommended ON
+    # -------------------------------------------------------------------------
+    echo "PERFORMANCE"
+    echo "$(printf -- '-%.0s' {1..60})"
     echo ""
 
-    # Cache Rules
-    echo "Cache Rules:"
+    _cf_check_setting "HTTP/3 (QUIC)" "http3" "on"
+    _cf_check_setting "Early Hints" "early_hints" "on"
+    _cf_check_setting "Always Online" "always_online" "on"
+    _cf_check_setting "WebSockets" "websockets" "on"
+    _cf_check_setting "Opportunistic Encryption" "opportunistic_encryption" "on"
+
+    # Tiered Cache uses a different endpoint
+    if [[ "$tiered_value" == "on" ]]; then
+        printf "  %-30s %-10s %s\n" "Tiered Cache" "$tiered_value" "[OK]"
+    else
+        printf "  %-30s %-10s %s\n" "Tiered Cache" "$tiered_value" "[FAIL] expected: on"
+        ((issue_count++))
+    fi
+
+    # 0-RTT — warn rather than fail (Pro plan required)
+    local zero_rtt=$(echo $settings | jq -r '.result[] | select(.id == "0rtt") | .value')
+    if [[ "$zero_rtt" == "on" ]]; then
+        printf "  %-30s %-10s %s\n" "0-RTT" "$zero_rtt" "[OK]"
+    else
+        _cf_check_warn "0-RTT" "$zero_rtt" "requires Pro plan"
+    fi
+
+    echo ""
+
+    # -------------------------------------------------------------------------
+    # 3. Security settings
+    # -------------------------------------------------------------------------
+    echo "SECURITY"
+    echo "$(printf -- '-%.0s' {1..60})"
+    echo ""
+
+    _cf_check_setting "TLS 1.3" "tls_1_3" "on"
+    _cf_check_setting "Minimum TLS Version" "min_tls_version" "1.2"
+    _cf_check_setting "Automatic HTTPS Rewrites" "automatic_https_rewrites" "on"
+
+    echo ""
+
+    # -------------------------------------------------------------------------
+    # 4. Cache rules
+    # -------------------------------------------------------------------------
+    echo "CACHE RULES"
+    echo "$(printf -- '-%.0s' {1..60})"
+    echo ""
+
     local rulesets=$(_cf_api GET "/zones/$zone_id/rulesets" "" "$zone_id" "$api_token")
     local cache_ruleset_id=$(echo "$rulesets" | jq -r '.result[] | select(.phase == "http_request_cache_settings") | .id // empty')
 
     if [[ -n "$cache_ruleset_id" ]]; then
         local cache_rules=$(_cf_api GET "/zones/$zone_id/rulesets/$cache_ruleset_id" "" "$zone_id" "$api_token")
-        echo "$cache_rules" | jq -r '.result.rules[] | "  - \(.description)"'
+        local rule_count=$(echo "$cache_rules" | jq -r '.result.rules | length')
+        echo "  $rule_count rule(s) configured:"
+        echo ""
+        echo "$cache_rules" | jq -r '.result.rules[] | "  \(.action) — \(.description)"'
     else
-        echo "  No cache rules configured"
-    fi
-
-    # -------------------------------------------------------------------------
-    # Test Cache Headers
-    # -------------------------------------------------------------------------
-    echo ""
-    echo "Test cache headers now? [Y/n]"
-    read -r test_response
-
-    if [[ ! "$test_response" =~ ^[Nn]$ ]]; then
-        _cf_test_cache_headers "$zone_id" "$api_token"
+        printf "  %-30s %s\n" "Cache rules" "[WARN] No cache rules configured"
+        ((warn_count++))
     fi
 
     echo ""
-    echo "==========================="
-    echo "Check complete"
+
+    # -------------------------------------------------------------------------
+    # 5. Verdict
+    # -------------------------------------------------------------------------
+    echo "$(printf '=%.0s' {1..60})"
+    echo ""
+
+    if [[ $issue_count -eq 0 && $warn_count -eq 0 ]]; then
+        echo "  PASS — All settings match standards"
+    elif [[ $issue_count -eq 0 ]]; then
+        echo "  PASS — $warn_count warning(s), no failures"
+    else
+        echo "  FAIL — $issue_count issue(s) to fix, $warn_count warning(s)"
+        echo ""
+        echo "  Run 'cf-opt $zone_name' to apply standard settings."
+    fi
+
+    echo ""
+
+    # -------------------------------------------------------------------------
+    # 6. Test cache headers (optional)
+    # -------------------------------------------------------------------------
+    if [[ "$batch_mode" == "batch" ]]; then
+        _cf_test_cache_headers "$zone_id" "$api_token" "$batch_mode"
+    else
+        echo "Test cache headers? [Y/n]"
+        read -r test_response
+
+        if [[ ! "$test_response" =~ ^[Nn]$ ]]; then
+            _cf_test_cache_headers "$zone_id" "$api_token"
+        fi
+    fi
+
+    echo ""
 
     # Clear credentials from memory
     unset CF_ZONE_ID CF_API_TOKEN
@@ -1068,7 +1206,8 @@ Commands:
   cf-opt                   Interactive mode - apply optimisations with prompts
   cf-opt DOMAIN            Batch mode - non-interactive, uses defaults
   cf-opt DOMAIN SITE_PATH  Batch mode with logging to specified path
-  cf-check                 Check current settings and test cache headers
+  cf-check                 Audit settings against standards (interactive)
+  cf-check DOMAIN          Audit settings against standards (batch mode)
   cf-help                  Show this help message
 
 Batch Mode (cf-opt only):
@@ -1139,9 +1278,13 @@ What cf-opt does:
      - Provides analysis and verdict
 
 What cf-check does:
-  - Displays all current Cloudflare settings
+  - Audits all settings against LiteSpeed + CF standards
+  - Shows pass/fail for each setting with expected values
+  - Flags standards violations (Auto Minify, Rocket Loader, etc.)
   - Shows cache rules
+  - Gives a verdict with issue count
   - Tests cache headers with analysis
+  - Supports batch mode: cf-check example.com.au
 
 EOF
 }
