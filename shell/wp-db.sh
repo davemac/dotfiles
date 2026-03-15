@@ -75,7 +75,7 @@ _pull_db() {
     # Show help if requested (caller handles this, but guard here too)
     for arg in "$@"; do
         if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
-            echo "WordPress ${env_label^} Database Sync Tool"
+            echo "WordPress ${(C)env_label} Database Sync Tool"
             echo ""
             echo "USAGE:"
             echo "  pull${env_label}                            # Sync ${env_label} database to local"
@@ -167,7 +167,7 @@ _pull_db() {
         echo "  - Network connectivity"
         return 1
     fi
-    message "${env_label^} server connection verified"
+    message "${(C)env_label} server connection verified"
 
     # Get remote URL for search-replace
     message "Getting ${env_label} site URL..."
@@ -177,14 +177,14 @@ _pull_db() {
         error "Failed to get ${env_label} site URL"
         return 1
     fi
-    message "${env_label^} URL: $REMOTE_URL"
+    message "${(C)env_label} URL: $REMOTE_URL"
 
     # User confirmation
     if [[ "$SKIP_CONFIRM" != true ]]; then
         echo ""
         warning "You are about to reset your local database and import the ${env_label} database."
         warning "This will overwrite all local data for site: $SITE_NAME"
-        warning "${env_label^} URL: $REMOTE_URL"
+        warning "${(C)env_label} URL: $REMOTE_URL"
         warning "Local URL: $LOCAL_URL"
         echo ""
         read "CONFIRM?Are you sure you want to continue? (y/n): "
@@ -216,7 +216,7 @@ _pull_db() {
 
     # Verify export success — restore on failure
     if [ ! -s "$IMPORT_FILE" ]; then
-        warning "${env_label^} database export failed or is empty"
+        warning "${(C)env_label} database export failed or is empty"
         message "Restoring local database..."
         wp db reset --yes || { error "Failed to reset database for restore"; return 1; }
         wp db import "$BACKUP_FILE" || { error "Failed to restore local database backup"; return 1; }
@@ -276,7 +276,7 @@ _pull_db() {
     local DIFF=$(( END - START ))
 
     message "Database sync completed successfully!"
-    message "${env_label^} database imported to local environment."
+    message "${(C)env_label} database imported to local environment."
     message "Admin password updated."
     message "Login URL: $LOCAL_URL/wp-admin/"
     message "Completed in $DIFF seconds."
