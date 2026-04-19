@@ -181,6 +181,13 @@ listcmds() {
     echo -e "${GREEN}wp_mcp_list_sites${NC}      List all wordpress-* MCP servers grouped by transport"
     echo ""
 
+    # Fleet Operations
+    echo -e "${BOLD}${YELLOW}Fleet Operations (wp-fleet.sh)${NC}"
+    echo -e "${GREEN}wp_fleet_update${NC}        Run plugin/theme/core updates across every registered WP site"
+    echo -e "${GREEN}wp_fleet_db_optimise${NC}   Run a safe DB cleanup across every registered WP site"
+    echo -e "${CYAN}  Shared flags: --dry-run/-n, --yes/-y, --json, --only=<pattern>, --exclude=<pattern>${NC}"
+    echo ""
+
     # Theme Deployment
     echo -e "${BOLD}${YELLOW}Theme Deployment (deployment.sh)${NC}"
     echo -e "${GREEN}firstdeploy${NC}      Initial site deployment to staging"

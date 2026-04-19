@@ -16,6 +16,7 @@ dotfiles/
 │   ├── wp-db.sh          # All database operations (pullprod, dmcweb, wp_db_optimise, etc.)
 │   ├── wp-diagnostics.sh # Troubleshooting (wp_plugin_diags)
 │   ├── wp-mcp.sh         # AI integration via Model Context Protocol (wp_mcp_add_site, wp_mcp_add_remote_site, wp_mcp_install_remote_plugins, wp_mcp_remove_site, wp_mcp_list_sites)
+│   ├── wp-fleet.sh       # Fleet operations across registered MCP sites (wp_fleet_update, wp_fleet_db_optimise)
 │   └── wp-uploads.sh     # Upload/file sync operations (getups, pushups)
 ├── .gitignore
 └── README.md
@@ -177,6 +178,24 @@ Helpers for exposing WordPress sites to AI agents via the Model Context Protocol
 
 **Requirements:** wp-cli, composer, git, jq, npx, and the `claude` command on PATH. The local WordPress admin user must be named `admin` (otherwise edit the `--user=` flag in `wp_mcp_add_site`). For remote sites, use a WordPress application password (Users → Profile → Application Passwords), not the user's main login password.
 
+### Fleet Operations (wp-fleet.sh)
+Multi-site bulk operations that iterate every `wordpress-*` MCP server registered in Claude Code (read directly from `~/.claude.json`, same source as `wp_mcp_list_sites`). Failures on individual sites are aggregated, never abort the run.
+
+- `wp_fleet_update [options]`: Run `wp plugin update --all`, `wp theme update --all`, and `wp core update` against every local registered site, in that order. Equivalent to `updatem` applied across the fleet.
+- `wp_fleet_db_optimise [options]`: Run a **safe subset** of `wp_db_optimise` across every local registered site — delete expired transients, orphaned postmeta, stale auto-drafts, stale edit locks, and run `wp db optimize`. Deliberately does NOT rewrite wp-config constants or deactivate/activate plugins (those are `wp_db_optimise`'s dev-focused steps and would be dangerous on production).
+
+**Shared flags:**
+- `--dry-run`, `-n` — preview pending operations; execute nothing
+- `--yes`, `-y` — skip the interactive confirmation prompt
+- `--json` — emit machine-readable JSON (suppresses all decorative output; stable contract for a future web-app dashboard)
+- `--only=<pattern>` — glob filter over server names (`--only=colacnew` or `--only=wordpress-colac*`)
+- `--exclude=<pattern>` — inverse glob filter
+- `--help`, `-h` — per-function help
+
+**Design decisions** (documented in full in the `wp-fleet.sh` header):
+- Remote (`http-proxy`) sites are **skipped in v1** — the MCP registry stores HTTP credentials for diagnostics but not the SSH details wp-cli needs. They are recorded in the JSON summary with `status: "skipped"`. v2 plan: a `WP_FLEET_SSH_MAP` in `.dotfiles-config`.
+- JSON shape is a stable contract documented at the top of `wp-fleet.sh`.
+
 ### Theme Deployment (deployment.sh)
 Deployment automation:
 - `firstdeploy`: Initial site deployment to staging
@@ -305,6 +324,19 @@ wp_mcp_remove_site colacnew
 
 After adding or removing, restart Claude Code and ask: *"health check on wordpress-colacnew"*.
 
+### Fleet Operations
+Bulk-iterate every registered WordPress MCP site. Use `--dry-run` first; the real run will prompt unless `--yes` is given.
+```bash
+wp_fleet_update --dry-run                 # preview pending updates across all sites
+wp_fleet_update --only=colacnew --dry-run # preview for a single site
+wp_fleet_update --yes                     # apply updates across the fleet
+wp_fleet_update --json --yes | jq .       # machine-readable output for tooling
+
+wp_fleet_db_optimise --dry-run            # preview cleanup counts across all sites
+wp_fleet_db_optimise --only=colacnew --yes
+wp_fleet_db_optimise --json --yes | jq '.sites[] | {name, details}'
+```
+
 ### Deployment
 Deploy theme to staging:
 ```bash
@@ -367,6 +399,7 @@ listcmds  # Display comprehensive list of all functions and aliases
     │   ├── wp-db.sh                         # Database operations
     │   ├── wp-diagnostics.sh                # Troubleshooting
     │   ├── wp-mcp.sh                        # AI integration (MCP)
+    │   ├── wp-fleet.sh                      # Fleet operations across MCP sites
     │   └── wp-uploads.sh                    # File sync operations
     ├── .dotfiles-config                     # Your personal settings (git-ignored)
     ├── .gitignore                           # Includes .dotfiles-config
