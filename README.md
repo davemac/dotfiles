@@ -15,7 +15,7 @@ dotfiles/
 │   ├── wp-core.sh        # WordPress WP-CLI shortcuts and aliases
 │   ├── wp-db.sh          # All database operations (pullprod, dmcweb, wp_db_optimise, etc.)
 │   ├── wp-diagnostics.sh # Troubleshooting (wp_plugin_diags)
-│   ├── wp-mcp.sh         # AI integration via Model Context Protocol (wp_mcp_add_site)
+│   ├── wp-mcp.sh         # AI integration via Model Context Protocol (wp_mcp_add_site, wp_mcp_add_remote_site, wp_mcp_install_remote_plugins, wp_mcp_remove_site, wp_mcp_list_sites)
 │   └── wp-uploads.sh     # Upload/file sync operations (getups, pushups)
 ├── .gitignore
 └── README.md
@@ -169,9 +169,13 @@ Tools for debugging WordPress issues:
 
 ### AI Integration (wp-mcp.sh)
 Helpers for exposing WordPress sites to AI agents via the Model Context Protocol (MCP):
-- `wp_mcp_add_site SITENAME`: Install the `wp-system-report` and `mcp-adapter` plugins on a local site (under `~/Sites/SITENAME`), activate them, and register the site as a STDIO MCP server in Claude Code as `wordpress-SITENAME`. Idempotent — safe to re-run.
+- `wp_mcp_add_site SITENAME [SUBSITE_URL] [SERVER_SUFFIX]`: Install the `wp-system-report` and `mcp-adapter` plugins on a local site (under `~/Sites/SITENAME`), activate them, and register the site as a STDIO MCP server in Claude Code as `wordpress-SITENAME`. Multisite-aware: detects networks via `wp core is-installed --network` and uses `--network` activation. Pass an optional `SUBSITE_URL` to register a per-subsite entry (registered as `wordpress-SITENAME-<slug>`, with `--url=` baked into the wp-cli args); pass an explicit `SERVER_SUFFIX` to override the auto-derived slug when subsite hosts collide (e.g. subdirectory installs). Idempotent — safe to re-run.
+- `wp_mcp_add_remote_site SITENAME URL USERNAME APP_PASSWORD`: Register a remote (production or staging) WordPress site as `wordpress-SITENAME`, using the Automattic `mcp-wordpress-remote` STDIO proxy. Client-side only — the remote site must already have `wp-system-report` and `mcp-adapter` installed and active. The URL may be a base URL (e.g. `https://example.com.au`) or a full MCP endpoint URL.
+- `wp_mcp_install_remote_plugins SITENAME [ALIAS]`: Companion to the above. Reads `~/Sites/SITENAME/wp-cli.yml`, resolves the named alias (defaults to `@prod`), and uses its `ssh:` + `path:` values to SSH into the host, clone both plugins into `wp-content/plugins`, run `composer install` on `mcp-adapter`, and activate them. Activation is invoked as `wp @prod plugin activate ...` so wp-cli handles the SSH plumbing; multisite is detected via `wp @prod core is-installed --network` and triggers `--network` activation. Pre-flight checks confirm `git`, `composer`, and `wp` are on the remote PATH.
+- `wp_mcp_remove_site SITENAME`: Unregister a `wordpress-SITENAME` entry from Claude Code. Idempotent — does not delete the WordPress plugins server-side.
+- `wp_mcp_list_sites`: List every `wordpress-*` MCP server known to Claude Code (across user and project scopes), grouped by transport (`stdio-local` vs `http-proxy`).
 
-**Requirements:** wp-cli, composer, git, and the `claude` command on PATH. The local WordPress admin user must be named `admin` (otherwise edit the `--user=` flag in the function).
+**Requirements:** wp-cli, composer, git, jq, npx, and the `claude` command on PATH. The local WordPress admin user must be named `admin` (otherwise edit the `--user=` flag in `wp_mcp_add_site`). For remote sites, use a WordPress application password (Users → Profile → Application Passwords), not the user's main login password.
 
 ### Theme Deployment (deployment.sh)
 Deployment automation:
@@ -270,7 +274,36 @@ Set up a local WordPress site for AI-driven diagnostics via Claude Code:
 ```bash
 wp_mcp_add_site colacnew  # Installs plugins + registers wordpress-colacnew with Claude Code
 ```
-After running, restart Claude Code and ask: *"health check on wordpress-colacnew"*.
+
+Multisite — expose the network's main site, or one entry per subsite:
+```bash
+wp_mcp_add_site mynet                                       # Network-activates, registers wordpress-mynet (main site)
+wp_mcp_add_site mynet https://subsite-a.localhost   # Registers wordpress-mynet-subsite-a
+wp_mcp_add_site mynet https://mynet.localhost/subdir-b/ subdir-b # Subdirectory subsite, explicit suffix to avoid collision
+```
+
+Install the MCP plugins on a remote site over SSH (resolves SSH alias + remote path from the site's `wp-cli.yml`):
+```bash
+wp_mcp_install_remote_plugins colacnew            # uses @prod by default
+wp_mcp_install_remote_plugins colacnew @staging   # override with a different alias
+```
+
+Register a remote (production or staging) site that already has the plugins deployed:
+```bash
+wp_mcp_add_remote_site myclient https://myclient.com.au admin xxxx-xxxx-xxxx-xxxx
+```
+
+List every registered WordPress MCP server (grouped by transport):
+```bash
+wp_mcp_list_sites
+```
+
+Unregister a site (does not touch the WordPress plugins themselves):
+```bash
+wp_mcp_remove_site colacnew
+```
+
+After adding or removing, restart Claude Code and ask: *"health check on wordpress-colacnew"*.
 
 ### Deployment
 Deploy theme to staging:
@@ -315,7 +348,8 @@ listcmds  # Display comprehensive list of all functions and aliases
 - WP-CLI
 - Git
 - SSH access to deployment servers
-- jq (for Cloudflare functions: `brew install jq`)
+- jq (for Cloudflare and MCP functions: `brew install jq`)
+- Composer, Node.js/npx, and Claude Code CLI (for `wp-mcp.sh` functions)
 
 ## File Structure After Installation
 

@@ -8,3 +8,6 @@
 
 # User-specific dotfiles configuration with sensitive values
 .dotfiles-config
+
+# Personal scratch / planning notes — not part of the published toolkit
+IMPROVEMENTS.md

@@ -174,7 +174,11 @@ listcmds() {
 
     # AI Integration
     echo -e "${BOLD}${YELLOW}AI Integration (wp-mcp.sh)${NC}"
-    echo -e "${GREEN}wp_mcp_add_site${NC}  Install wp-system-report + mcp-adapter on a local site and register with Claude Code"
+    echo -e "${GREEN}wp_mcp_add_site${NC}        Install wp-system-report + mcp-adapter on a local site and register with Claude Code"
+    echo -e "${GREEN}wp_mcp_add_remote_site${NC} Register a remote (prod/staging) WP site via Automattic STDIO proxy"
+    echo -e "${GREEN}wp_mcp_install_remote_plugins${NC} Install + activate MCP plugins on a remote site (alias resolved from wp-cli.yml)"
+    echo -e "${GREEN}wp_mcp_remove_site${NC}     Unregister a wordpress-<sitename> entry from Claude Code (idempotent)"
+    echo -e "${GREEN}wp_mcp_list_sites${NC}      List all wordpress-* MCP servers grouped by transport"
     echo ""
 
     # Theme Deployment
