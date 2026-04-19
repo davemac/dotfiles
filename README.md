@@ -15,6 +15,7 @@ dotfiles/
 │   ├── wp-core.sh        # WordPress WP-CLI shortcuts and aliases
 │   ├── wp-db.sh          # All database operations (pullprod, dmcweb, wp_db_optimise, etc.)
 │   ├── wp-diagnostics.sh # Troubleshooting (wp_plugin_diags)
+│   ├── wp-mcp.sh         # AI integration via Model Context Protocol (wp_mcp_add_site)
 │   └── wp-uploads.sh     # Upload/file sync operations (getups, pushups)
 ├── .gitignore
 └── README.md
@@ -166,6 +167,12 @@ File sync operations between environments:
 Tools for debugging WordPress issues:
 - `wp_plugin_diags`: Systematically test plugins to isolate fatal errors
 
+### AI Integration (wp-mcp.sh)
+Helpers for exposing WordPress sites to AI agents via the Model Context Protocol (MCP):
+- `wp_mcp_add_site SITENAME`: Install the `wp-system-report` and `mcp-adapter` plugins on a local site (under `~/Sites/SITENAME`), activate them, and register the site as a STDIO MCP server in Claude Code as `wordpress-SITENAME`. Idempotent — safe to re-run.
+
+**Requirements:** wp-cli, composer, git, and the `claude` command on PATH. The local WordPress admin user must be named `admin` (otherwise edit the `--user=` flag in the function).
+
 ### Theme Deployment (deployment.sh)
 Deployment automation:
 - `firstdeploy`: Initial site deployment to staging
@@ -258,6 +265,13 @@ cd ~/Sites/yoursite
 wp_plugin_diags  # Systematically test each plugin
 ```
 
+### AI Integration (MCP)
+Set up a local WordPress site for AI-driven diagnostics via Claude Code:
+```bash
+wp_mcp_add_site colacnew  # Installs plugins + registers wordpress-colacnew with Claude Code
+```
+After running, restart Claude Code and ask: *"health check on wordpress-colacnew"*.
+
 ### Deployment
 Deploy theme to staging:
 ```bash
@@ -318,6 +332,7 @@ listcmds  # Display comprehensive list of all functions and aliases
     │   ├── wp-core.sh                       # WordPress shortcuts
     │   ├── wp-db.sh                         # Database operations
     │   ├── wp-diagnostics.sh                # Troubleshooting
+    │   ├── wp-mcp.sh                        # AI integration (MCP)
     │   └── wp-uploads.sh                    # File sync operations
     ├── .dotfiles-config                     # Your personal settings (git-ignored)
     ├── .gitignore                           # Includes .dotfiles-config

@@ -172,6 +172,11 @@ listcmds() {
     echo -e "${GREEN}wp_plugin_diags${NC}  Systematically test plugins to isolate fatal errors"
     echo ""
 
+    # AI Integration
+    echo -e "${BOLD}${YELLOW}AI Integration (wp-mcp.sh)${NC}"
+    echo -e "${GREEN}wp_mcp_add_site${NC}  Install wp-system-report + mcp-adapter on a local site and register with Claude Code"
+    echo ""
+
     # Theme Deployment
     echo -e "${BOLD}${YELLOW}Theme Deployment (deployment.sh)${NC}"
     echo -e "${GREEN}firstdeploy${NC}      Initial site deployment to staging"
