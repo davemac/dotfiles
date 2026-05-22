@@ -56,6 +56,22 @@ _wp_mcp_clone_plugin() {
   git clone --quiet "$repo" "$plugins_dir/$name"
 }
 
+# Internal: activate wp-system-report and mcp-adapter via wp-cli, network-wide
+# on multisite. Takes the working directory to run from (needed for remote
+# `wp @alias` invocations that resolve wp-cli.yml) plus the wp arguments that
+# identify the target install (e.g. `--path=...` locally, `@prod` remotely).
+# The caller owns the surrounding `[N/M] ...` step label.
+_wp_mcp_activate_plugins() {
+  local cwd="$1"
+  shift
+  local network_flag=""
+  if ( cd "$cwd" && wp "$@" core is-installed --network 2>/dev/null ); then
+    echo "      multisite detected — network-activating"
+    network_flag="--network"
+  fi
+  ( cd "$cwd" && wp "$@" plugin activate wp-system-report mcp-adapter $network_flag )
+}
+
 # Add a Local WordPress Site to Claude Code MCP
 #
 # Purpose: One-command install of wp-system-report + mcp-adapter on a local
@@ -116,12 +132,11 @@ wp_mcp_add_site() {
   fi
 
   local path="$HOME/Sites/$site"
-  if [[ ! -d "$path/wp-content/plugins" ]]; then
+  local plugins="$path/wp-content/plugins"
+  if [[ ! -d "$plugins" ]]; then
     echo "Error: $path does not look like a WordPress install (no wp-content/plugins)"
     return 1
   fi
-
-  local plugins="$path/wp-content/plugins"
 
   # Detect multisite by interrogating the install (not by grepping wp-config.php).
   local is_multisite=false
@@ -164,14 +179,8 @@ wp_mcp_add_site() {
     || { echo "Error: composer install failed for mcp-adapter"; return 1; }
 
   echo "[3/4] activating plugins..."
-  if [[ "$is_multisite" == "true" ]]; then
-    echo "      multisite detected — network-activating"
-    wp --path="$path" plugin activate wp-system-report mcp-adapter --network \
-      || { echo "Error: plugin network-activation failed"; return 1; }
-  else
-    wp --path="$path" plugin activate wp-system-report mcp-adapter \
-      || { echo "Error: plugin activation failed"; return 1; }
-  fi
+  _wp_mcp_activate_plugins "$path" --path="$path" \
+    || { echo "Error: plugin activation failed"; return 1; }
 
   echo "[4/4] registering MCP server as $server..."
   local wp_args=( --path="$path" )
@@ -340,9 +349,11 @@ wp_mcp_install_remote_plugins() {
   alias_json=$(cd "$site_path" && wp cli alias list --format=json 2>/dev/null) \
     || { echo "Error: failed to read aliases from $site_path/wp-cli.yml"; return 1; }
 
-  local ssh_alias remote_path
-  ssh_alias=$(echo "$alias_json" | jq -r --arg a "$alias_name" '.[$a].ssh // empty')
-  remote_path=$(echo "$alias_json" | jq -r --arg a "$alias_name" '.[$a].path // empty')
+  # Pull both fields in a single jq call, tab-separated, and split locally.
+  local ssh_alias remote_path alias_fields
+  alias_fields=$(echo "$alias_json" | jq -r --arg a "$alias_name" '[.[$a].ssh // "", .[$a].path // ""] | @tsv')
+  ssh_alias="${alias_fields%%	*}"
+  remote_path="${alias_fields#*	}"
 
   if [[ -z "$ssh_alias" ]]; then
     echo "Error: $alias_name not found in $site_path/wp-cli.yml or has no 'ssh:' field"
@@ -389,12 +400,7 @@ wp_mcp_install_remote_plugins() {
   " || { echo "Error: remote clone or composer install failed"; return 1; }
 
   echo "[5/5] activating plugins via $alias_name (wp-cli handles SSH)..."
-  local network_flag=""
-  if ( cd "$site_path" && wp "$alias_name" core is-installed --network 2>/dev/null ); then
-    echo "      multisite detected — network-activating"
-    network_flag="--network"
-  fi
-  ( cd "$site_path" && wp "$alias_name" plugin activate wp-system-report mcp-adapter $network_flag ) \
+  _wp_mcp_activate_plugins "$site_path" "$alias_name" \
     || { echo "Error: remote plugin activation failed"; return 1; }
 
   echo ""
