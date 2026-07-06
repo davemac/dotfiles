@@ -61,6 +61,10 @@ _get_ssh_alias() {
 
     if [ -n "$wp_alias" ] && command -v wp > /dev/null 2>&1; then
         ssh_alias=$(wp cli alias get "$wp_alias" 2>/dev/null | grep -E '^\s*ssh:' | awk '{print $2}')
+        # WP-CLI ssh values may include a remote path and port ([user@]host[:port][/path]).
+        # Only the host is wanted here.
+        ssh_alias="${ssh_alias%%/*}"
+        ssh_alias="${ssh_alias%%:*}"
     fi
 
     if [ -z "$ssh_alias" ]; then
