@@ -14,7 +14,7 @@
 # • pulldb                     - Export production database to timestamped local file (alias)
 #
 # User Management:
-# • dmcweb [user]              - Update user password to configured dev password (defaults to first admin)
+# • dmcweb [user]              - Update user password to configured dev password (defaults to 'admin' user)
 #
 # Multi-Host Operations:
 # • update-wc-db               - Update WooCommerce database on multiple configured hosts
@@ -506,13 +506,19 @@ pulldb() {
 }
 
 # Update user password to configured dev password.
-# Defaults to the first administrator user found, falls back to user ID 1.
+# Defaults to the 'admin' user, then the first administrator found, then user ID 1.
 # Usage: dmcweb [user_login_or_id]
 dmcweb() {
     load_dotfiles_config 2>/dev/null || true
     local user_id="$1"
     if [[ -z "$user_id" ]]; then
-        user_id=$(wp user list --role=administrator --field=ID --format=csv 2>/dev/null | head -n1)
+        # Look up 'admin' by login first. Role list queries can be filtered by
+        # plugins hooking pre_user_query (e.g. dmc-editors-manage-users hides
+        # user ID 1), but a direct lookup is unaffected.
+        user_id=$(wp user get admin --field=ID 2>/dev/null)
+        if [[ -z "$user_id" ]]; then
+            user_id=$(wp user list --role=administrator --field=ID --format=csv 2>/dev/null | head -n1)
+        fi
         user_id=${user_id:-1}
     fi
     wp user update "$user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}"
