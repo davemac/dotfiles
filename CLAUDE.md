@@ -24,7 +24,7 @@ Every function that needs configuration calls `load_dotfiles_config 2>/dev/null 
 
 - `WC_HOSTS` — space-separated SSH aliases for WooCommerce sites (used by `update-wc-db`)
 - `CF_API_TOKEN` — Cloudflare API token (used by `cf-opt`, `cf-check`)
-- `DEV_WP_PASSWORD` — local dev password (used by `dmcweb`)
+- `DEV_WP_PASSWORD` — local dev password (used by `dmcweb`, `pullprod` and `pullstage`; no default, must be set)
 - `SSH_PROXY_HOST` — SSH proxy server name (used by `socksit`, `chromeproxy`)
 
 ## SSH Aliases

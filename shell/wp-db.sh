@@ -242,15 +242,16 @@ _pull_db() {
     message "Replacing ${env_label} URL with local URL..."
     wp search-replace "$REMOTE_URL" "$LOCAL_URL" --all-tables --precise || warning "Search-replace operation may not have completed successfully"
 
-    # Set local development credentials
+    # Set local development credentials. dmcweb owns the user lookup and the
+    # DEV_WP_PASSWORD guard so the pull and the manual reset cannot drift.
     load_dotfiles_config 2>/dev/null || true
     message "Updating admin user password..."
-    local admin_user_id=$(wp user list --role=administrator --field=ID --format=csv 2>/dev/null | head -n1)
-    admin_user_id=${admin_user_id:-1}
-    if wp user update "$admin_user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}" 2>/dev/null; then
+    local PASSWORD_UPDATED=false
+    if dmcweb; then
+        PASSWORD_UPDATED=true
         message "Admin password updated successfully"
     else
-        warning "Failed to update admin password for user ID: $admin_user_id"
+        warning "Admin password NOT updated. Check DEV_WP_PASSWORD in .dotfiles-config, then run 'dmcweb'."
     fi
 
     # Update WordPress components
@@ -277,7 +278,11 @@ _pull_db() {
 
     message "Database sync completed successfully!"
     message "${(C)env_label} database imported to local environment."
-    message "Admin password updated."
+    if [[ "$PASSWORD_UPDATED" == true ]]; then
+        message "Admin password updated."
+    else
+        warning "Admin password NOT updated. Run 'dmcweb' once DEV_WP_PASSWORD is set."
+    fi
     message "Login URL: $LOCAL_URL/wp-admin/"
     message "Completed in $DIFF seconds."
 }
@@ -505,11 +510,17 @@ pulldb() {
     wp @prod db export - > "$(basename "$PWD")-$(date +%Y-%m-%d).sql"
 }
 
-# Update user password to configured dev password.
+# Update user password to the configured dev password (DEV_WP_PASSWORD).
 # Defaults to the 'admin' user, then the first administrator found, then user ID 1.
+# Also called by pullprod/pullstage so both paths share one lookup and guard.
+# Fails loudly when DEV_WP_PASSWORD is unset rather than applying a placeholder.
 # Usage: dmcweb [user_login_or_id]
 dmcweb() {
     load_dotfiles_config 2>/dev/null || true
+    if [[ -z "$DEV_WP_PASSWORD" ]]; then
+        echo "dmcweb: DEV_WP_PASSWORD is not set. Add it to ${DOTFILES_CONFIG_FILE:-$HOME/dotfiles/.dotfiles-config} and retry." >&2
+        return 1
+    fi
     local user_id="$1"
     if [[ -z "$user_id" ]]; then
         # Look up 'admin' by login first. Role list queries can be filtered by
@@ -521,7 +532,7 @@ dmcweb() {
         fi
         user_id=${user_id:-1}
     fi
-    wp user update "$user_id" --user_pass="${DEV_WP_PASSWORD:-defaultpass}"
+    wp user update "$user_id" --user_pass="$DEV_WP_PASSWORD"
 }
 
 # Update WooCommerce on multiple hosts
