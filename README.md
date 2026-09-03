@@ -92,7 +92,7 @@ load_dotfiles_config 2>/dev/null || true  # Safe loading pattern
 
 ### First-Time Setup
 After installation, you'll want to customise your `.dotfiles-config` file with your actual values:
-- `DEV_WP_PASSWORD` - Your preferred WordPress development password
+- `DEV_WP_PASSWORD` - Your preferred WordPress development password (required by `pullprod`, `pullstage` and `dmcweb`)
 - `SSH_PROXY_HOST` - Your SSH proxy server hostname
 - `WC_HOSTS` - Your WooCommerce production server aliases
 - `DEV_PLUGINS_ACTIVATE` - Plugins to activate locally after DB pull
@@ -150,7 +150,7 @@ All database-related functions consolidated:
 - `pulldb`: Export production database to timestamped local file
 
 **User Management:**
-- `dmcweb [user]`: Update user password to configured dev password (defaults to first admin)
+- `dmcweb [user]`: Update user password to configured dev password (defaults to the `admin` login, then the first administrator; also run by `pullprod`/`pullstage`)
 
 **Multi-Host Operations:**
 - `update-wc-db`: Update WooCommerce database on multiple configured hosts

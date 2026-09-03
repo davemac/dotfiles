@@ -39,7 +39,7 @@
 # • SSH_TIMEOUT                - SSH connection timeout in seconds
 # • DEFAULT_MEMORY_LIMIT       - WordPress memory limit for optimization
 # • DEFAULT_MAX_MEMORY_LIMIT   - WordPress max memory limit
-# • DEV_WP_PASSWORD            - WordPress development password (override in config!)
+# • DEV_WP_PASSWORD            - WordPress development password (required: set in config!)
 # • SSH_PROXY_HOST             - SSH proxy host for SOCKS tunneling (override in config!)
 # • DEV_PLUGINS_ACTIVATE       - Plugins to activate locally after DB pull
 # • PROD_PLUGINS_DEACTIVATE    - Production-only plugins to deactivate locally
@@ -88,7 +88,7 @@ load_dotfiles_config() {
     SSH_TIMEOUT="10"                                           # SSH connection timeout in seconds
     DEFAULT_MEMORY_LIMIT="512M"                               # WordPress memory limit for wp_db_optimise
     DEFAULT_MAX_MEMORY_LIMIT="1024M"                          # WordPress max memory limit
-    DEV_WP_PASSWORD="defaultpass"                             # Default WordPress dev password (OVERRIDE IN .dotfiles-config!)
+    DEV_WP_PASSWORD=""                                        # WordPress dev password. No default: set it in .dotfiles-config.
     SSH_PROXY_HOST="localhost"                                 # Default SSH proxy host (OVERRIDE IN .dotfiles-config!)
     DEV_PLUGINS_ACTIVATE="query-monitor acf-theme-code-pro"   # Plugins to activate locally after DB pull
     PROD_PLUGINS_DEACTIVATE="worker wp-rocket passwords-evolved"  # Production-only plugins to deactivate locally
@@ -96,6 +96,13 @@ load_dotfiles_config() {
     STAGING_DOMAIN="dmctest.com.au"                           # Staging domain suffix
 
     # LOAD USER OVERRIDES:
+    # DOTFILES_CONFIG_FILE is set when this file is sourced, but a shell that
+    # restores functions without variables (e.g. the Claude Code shell
+    # snapshot) calls this with it empty. Fall back to the standard location
+    # so the config is never silently skipped.
+    if [[ -z "$DOTFILES_CONFIG_FILE" ]]; then
+        DOTFILES_CONFIG_FILE="$HOME/dotfiles/.dotfiles-config"
+    fi
     # If .dotfiles-config exists, source it to override the defaults above
     if [[ -f "$DOTFILES_CONFIG_FILE" ]]; then
         source "$DOTFILES_CONFIG_FILE"
@@ -152,7 +159,7 @@ create_default_config() {
 # BACKUP_DIR="$HOME/backups/dotfiles"
 
 # Security Configuration
-# Default WordPress development password
+# WordPress development password (required by pullprod, pullstage and dmcweb)
 # DEV_WP_PASSWORD="your-dev-password"
 
 # SSH proxy host for SOCKS tunneling
