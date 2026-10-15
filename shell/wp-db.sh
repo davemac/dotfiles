@@ -268,6 +268,15 @@ _pull_db() {
     wp jetpack module deactivate protect 2>/dev/null
     wp jetpack module deactivate account-protection 2>/dev/null
 
+    # Remove MainWP Child cron events when the plugin is not installed locally; their custom schedules no longer exist, so every reschedule logs an error.
+    if ! wp plugin is-installed mainwp-child 2>/dev/null; then
+        local mainwp_events=$(wp cron event list --field=hook 2>/dev/null | grep '^mainwp_child_' | sort -u)
+        if [ -n "$mainwp_events" ]; then
+            message "Removing MainWP Child cron events..."
+            wp cron event delete ${(f)mainwp_events} 2>/dev/null
+        fi
+    fi
+
     # Navigate to theme directory
     if [ -d "$SITE_ROOT/wp-content/themes/$SITE_NAME" ]; then
         cd "$SITE_ROOT/wp-content/themes/$SITE_NAME" || true
