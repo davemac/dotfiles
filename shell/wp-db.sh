@@ -268,6 +268,11 @@ _pull_db() {
     wp jetpack module deactivate protect 2>/dev/null
     wp jetpack module deactivate account-protection 2>/dev/null
 
+    # Turn off the Simple Cloudflare Turnstile login check; the production site key cannot validate on .localhost, which blocks wp-admin login.
+    if wp plugin is-active simple-cloudflare-turnstile 2>/dev/null; then
+        wp option update cfturnstile_login 0 2>/dev/null
+    fi
+
     # Remove MainWP Child cron events when the plugin is not installed locally; their custom schedules no longer exist, so every reschedule logs an error.
     if ! wp plugin is-installed mainwp-child 2>/dev/null; then
         local mainwp_events=$(wp cron event list --field=hook 2>/dev/null | grep '^mainwp_child_' | sort -u)
